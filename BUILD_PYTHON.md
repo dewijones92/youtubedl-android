@@ -5,7 +5,7 @@ The bundled CPython is built (via Termux packages) for API 24+, so on Android 6.
 to load with `cannot locate symbol …` and `invalid ELF file … load segment past end of file`
 (issue #304). To make the committed `library/src/main/jniLibs/<abi>/libpython.zip.so` load on API 23:
 
-    ANDROID_NDK_HOME=<ndk> ./tools/patch_python_api23.sh
+    ANDROID_NDK_HOME=<ndk> ./tools/patch_natives_api23.sh
 
 It (1) compiles `tools/api23_shim.c` — backfilling the few libc functions Bionic only added at
 API 24+ (`lockf`/`preadv`/`pwritev`, and the `*64` variants on 32-bit) — and adds it as a
