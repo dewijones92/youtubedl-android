@@ -8,7 +8,12 @@
  * We define both the off_t and off64_t variants so one source covers every ABI. The
  * getifaddrs/if_nameindex/memfd_create stubs are kept defensively (newer CPython builds
  * pull them in). preadv/pwritev are implemented via pread64/pwrite64 loops — correct and
- * arch-independent (no raw-syscall offset-ABI pitfalls). pread64/pwrite64 exist on API 23. */
+ * arch-independent (no raw-syscall offset-ABI pitfalls). pread64/pwrite64 exist on API 23.
+ *
+ * Also backfills symbols ffmpeg's bundled libs need on API 23 (strchrnul for libidn2;
+ * in6addr_any/in6addr_loopback for libzmq/libsrt/libgio). These are reached by transitively
+ * loaded libs, so the host must LD_PRELOAD this shim — a DT_NEEDED on the executable alone is
+ * not in their symbol scope on the API-23 linker. */
 #include <sys/uio.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -73,6 +78,20 @@ void freeifaddrs(struct ifaddrs *ifa)  { (void) ifa; }
 struct if_nameindex { unsigned int if_index; char *if_name; };
 struct if_nameindex *if_nameindex(void) { return (struct if_nameindex *) calloc(1, sizeof(struct if_nameindex)); }
 void if_freenameindex(struct if_nameindex *p) { free(p); }
+
+/* IPv6 wildcard/loopback constants (added to Bionic at API 24; pre-24 netinet/in.h ships them
+ * as per-TU statics, so libs built for 24+ have an unresolved extern). ffmpeg's bundled
+ * libzmq.so references in6addr_any → "cannot locate symbol in6addr_any" on API 23. We export
+ * them as 16-byte objects (struct in6_addr is 16 bytes: :: and ::1) so DT_NEEDED libshim
+ * satisfies the reference. Defined as byte arrays to avoid netinet/in.h's static declaration. */
+const unsigned char in6addr_any[16]      = {0};
+const unsigned char in6addr_loopback[16] = {[15] = 1};
+
+/* strchrnul (added API 24) — used by ffmpeg's bundled libidn2.so */
+char *strchrnul(const char *s, int c) {
+    while (*s && *s != (char) c) s++;
+    return (char *) s;
+}
 
 /* memfd_create (added API 30) — defensive (some CPython builds reference it) */
 int memfd_create(const char *name, unsigned int flags) {
