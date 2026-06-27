@@ -23,8 +23,7 @@ open class PublishPlugin : Plugin<Project> {
                     println("Published!")
                     project.configureAndroid()
                     project.configurePublish(id = artifactId)
-                    // Sign only when explicitly requested (Maven Central); local/JitPack builds skip GPG.
-                    if (project.findProperty("signPublications") == "true") project.configureSigning()
+                    project.configureSigning()
                 }
             }
         }
