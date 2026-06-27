@@ -1,6 +1,7 @@
 # JitPack build config: build the API-23 fork straight from GitHub so consumers can depend on
-# com.github.dewijones92.youtubedl-android:* without a local publish. buildSrc needs JDK 17.
+# it without a local publish. buildSrc needs JDK 17. Signing is gated off (no GPG on JitPack),
+# so publishToMavenLocal runs unsigned.
 jdk:
   - openjdk17
 install:
-  - ./gradlew :common:publishToMavenLocal :library:publishToMavenLocal :ffmpeg:publishToMavenLocal -x signReleasePublication
+  - ./gradlew :common:publishToMavenLocal :library:publishToMavenLocal :ffmpeg:publishToMavenLocal
