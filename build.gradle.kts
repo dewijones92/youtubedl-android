@@ -21,7 +21,7 @@ buildscript {
 
 val versionMajor = 0
 val versionMinor = 18
-val versionPatch = 5 // 0.18.5: shim adds strchrnul; LD_PRELOAD the shim so ffmpeg/ffprobe link via yt-dlp on API 23
+val versionPatch = 6 // 0.18.6: wrap qjs on API<24 so yt-dlp version-probe ignores linker stderr warnings (quickjs detection)
 val versionBuild = 0 // bump for dogfood builds, public betas, etc.
 val versionCode = versionMajor * 100000 + versionMinor * 1000 + versionPatch * 100 + versionBuild
 val versionName = "$versionMajor.$versionMinor.$versionPatch"

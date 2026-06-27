@@ -18,6 +18,7 @@ object YoutubeDL {
     private var pythonPath: File? = null
     private var ffmpegPath: File? = null
     private var quickJsPath: File? = null
+    private var quickJsArg: String? = null   // path passed to --js-runtimes (qjs binary, or an API-23 wrapper)
     private var ytdlpPath: File? = null
     private var binDir: File? = null
     private var ENV_LD_LIBRARY_PATH: String? = null
@@ -56,7 +57,29 @@ object YoutubeDL {
         TMPDIR = appContext.cacheDir.absolutePath
         initPython(appContext, pythonDir)
         init_ytdlp(appContext, ytdlpDir)
+        quickJsArg = buildQuickJsArg(baseDir)
         initialized = true
+    }
+
+    /**
+     * Path to pass as the quickjs JS runtime. On API < 24 the dynamic linker prints "unused DT
+     * entry" warnings to stderr when loading these API-24-built libs; yt-dlp's `qjs --help` version
+     * probe merges stderr into stdout and matches the version anchored at the start of output, so the
+     * warning hides "QuickJS version ..." and quickjs is rejected as unsupported. Wrap qjs in a tiny
+     * script that drops stderr so the probe parses cleanly. (Exec from the data dir is permitted on
+     * API 23; API 24+ doesn't emit the warnings, so it uses the qjs binary directly.)
+     */
+    private fun buildQuickJsArg(baseDir: File): String {
+        val direct = quickJsPath!!.absolutePath
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) return direct
+        return try {
+            val wrapper = File(baseDir, "qjs")
+            wrapper.writeText("#!/system/bin/sh\nexec $direct \"\$@\" 2>/dev/null\n")
+            wrapper.setExecutable(true, false)
+            wrapper.absolutePath
+        } catch (e: Exception) {
+            direct
+        }
     }
 
     @Throws(YoutubeDLException::class)
@@ -202,7 +225,7 @@ object YoutubeDL {
                 )
         }
 
-        request.addOption("--js-runtimes", "quickjs:${quickJsPath!!.absolutePath}")
+        request.addOption("--js-runtimes", "quickjs:${quickJsArg ?: quickJsPath!!.absolutePath}")
 
         /* Set ffmpeg location, See https://github.com/xibr/ytdlp-lazy/issues/1 */
         request.addOption("--ffmpeg-location", ffmpegPath!!.absolutePath)
