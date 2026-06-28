@@ -114,6 +114,10 @@ internal fun VideoFormat.toMediaFormat(): MediaFormat = MediaFormat(
     vcodec = vcodec,
     acodec = acodec,
     averageBitrateKbps = abr,
+    totalBitrateKbps = tbr,
+    audioSampleRate = asr,
+    fps = fps,
+    formatNote = formatNote,
     fileSizeBytes = if (fileSize > 0) fileSize else fileSizeApproximate,
     url = url,
 )

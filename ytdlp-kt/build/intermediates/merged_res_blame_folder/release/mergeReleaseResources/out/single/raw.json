@@ -2,5 +2,9 @@
     {
         "merged": "com.dewijones92.ytdlpkt.ytdlp-kt-release-20:/raw/ytdlp",
         "source": "com.dewijones92.ytdlpkt.ytdlp-kt-release-16:/raw/ytdlp"
+    },
+    {
+        "merged": "/home/dewi/.gradle/daemon/8.14.3/com.dewijones92.ytdlpkt.ytdlp-kt-release-20:/raw/ytdlp",
+        "source": "/home/dewi/.gradle/daemon/8.14.3/com.dewijones92.ytdlpkt.ytdlp-kt-release-16:/raw/ytdlp"
     }
 ]

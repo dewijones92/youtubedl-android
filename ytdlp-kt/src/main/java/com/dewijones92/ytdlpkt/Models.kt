@@ -26,7 +26,16 @@ data class MediaFormat(
     val height: Int,
     val vcodec: String?,
     val acodec: String?,
+    /** Average (audio) bitrate, kbps — yt-dlp `abr`. */
     val averageBitrateKbps: Int,
+    /** Total bitrate, kbps — yt-dlp `tbr` (used for stream selection/itag bitrate). */
+    val totalBitrateKbps: Int,
+    /** Audio sample rate in Hz — yt-dlp `asr`. */
+    val audioSampleRate: Int,
+    /** Frames per second — yt-dlp `fps`. */
+    val fps: Int,
+    /** yt-dlp `format_note` (e.g. "1080p60", "original", language tag). */
+    val formatNote: String?,
     val fileSizeBytes: Long,
     val url: String?,
 ) {
