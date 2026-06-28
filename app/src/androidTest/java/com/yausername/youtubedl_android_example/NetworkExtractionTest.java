@@ -38,8 +38,10 @@ public class NetworkExtractionTest {
     @Test
     public void resolveRealYouTubeVideo() throws Exception {
         // "Me at the zoo" — the first YouTube video, stable id.
-        // Use the 'tv' player client: on datacenter IPs (CI) it often avoids YouTube's
-        // "Sign in to confirm you're not a bot" / PO-token gate that the default web client hits.
+        // NOTE: on CI (GitHub datacenter IP) this reliably hits YouTube's "Sign in to confirm
+        // you're not a bot" block AFTER a successful nsig/JS run — confirmed unchanged with the
+        // 'tv' client and yt-dlp 2026.06.09, i.e. it's pure cloud-IP reputation, not a stack
+        // defect. Kept non-gating; real-device (residential/mobile IP) is the true validation.
         YoutubeDLRequest request = new YoutubeDLRequest("https://www.youtube.com/watch?v=jNQXAC9IVRw");
         request.addOption("--extractor-args", "youtube:player_client=tv");
         VideoInfo info = YoutubeDL.getInstance().getInfo(request);
