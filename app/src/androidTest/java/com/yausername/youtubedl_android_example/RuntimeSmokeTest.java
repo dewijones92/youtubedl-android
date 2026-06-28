@@ -61,14 +61,17 @@ public class RuntimeSmokeTest {
                 + new File(pkgs, "ffmpeg/usr/lib") + ":"
                 + new File(pkgs, "aria2c/usr/lib");
 
-        assertExec(binDir, ld, "libffmpeg.so", "-version");
-        assertExec(binDir, ld, "libffprobe.so", "-version");
-        assertExec(binDir, ld, "libqjs.so", "-e", "0");   // eval & exit (no REPL)
-        assertExec(binDir, ld, "libaria2c.so", "--version");
+        // Run all binaries and collect every failure so one emulator run shows the full picture.
+        StringBuilder failures = new StringBuilder();
+        check(failures, binDir, ld, "libffmpeg.so", "-version");
+        check(failures, binDir, ld, "libffprobe.so", "-version");
+        check(failures, binDir, ld, "libqjs.so", "-e", "0");   // eval & exit (no REPL)
+        check(failures, binDir, ld, "libaria2c.so", "--version");
+        if (failures.length() > 0) fail(failures.toString());
     }
 
-    private static void assertExec(String binDir, String ld, String binName, String... args)
-            throws Exception {
+    private static void check(StringBuilder failures, String binDir, String ld, String binName,
+                              String... args) throws Exception {
         List<String> cmd = new ArrayList<>();
         cmd.add(new File(binDir, binName).getAbsolutePath());
         for (String a : args) cmd.add(a);
@@ -81,11 +84,15 @@ public class RuntimeSmokeTest {
         // Linker warnings (unused DT entry / unsupported DT_FLAGS_1) are EXPECTED noise on API 23
         // and non-fatal. A real failure is a non-zero exit, an explicit link error, or no output.
         boolean linkFail = out.contains("CANNOT LINK") || out.contains("cannot locate symbol")
-                || out.contains("library \"") && out.contains("not found");
-        boolean ok = code == 0 && !linkFail && out.trim().length() > 0;
-        if (!ok) {
-            fail(binName + ": exitCode=" + code + " linkFail=" + linkFail
-                    + " outLen=" + out.length() + " out=[" + out + "]");
+                || (out.contains("library \"") && out.contains("not found"));
+        if (code != 0 || linkFail || out.trim().isEmpty()) {
+            // Trim to the most informative bit (first link error line, else head of output).
+            String detail = out;
+            int idx = out.indexOf("CANNOT LINK");
+            if (idx < 0) idx = out.indexOf("cannot locate symbol");
+            if (idx >= 0) detail = out.substring(idx, Math.min(out.length(), idx + 200));
+            failures.append("\n  ").append(binName).append(": exitCode=").append(code)
+                    .append(" linkFail=").append(linkFail).append(" -> ").append(detail.trim());
         }
     }
 
