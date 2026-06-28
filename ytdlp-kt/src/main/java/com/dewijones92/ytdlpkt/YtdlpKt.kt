@@ -12,6 +12,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 /**
@@ -92,6 +93,17 @@ object YtdlpKt {
     }
 
     private fun ensureInit() = check(initialized) { "YtdlpKt.init(context) must be called first" }
+
+    // ---- Java-friendly blocking variants (for synchronous callers, e.g. NewPipe's
+    // Single.fromCallable). Call off the main thread. ----
+
+    @JvmStatic
+    fun resolveBlocking(url: String): MediaInfo = runBlocking { resolve(url) }
+
+    @JvmStatic
+    @JvmOverloads
+    fun searchBlocking(query: String, limit: Int = 10): List<MediaInfo> =
+        runBlocking { search(query, limit) }
 }
 
 // ---- mapping (pure, unit-tested) ----
