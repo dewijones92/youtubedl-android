@@ -72,11 +72,19 @@ object YtdlpKt {
         url: String,
         outputTemplate: String,
         formatSelector: String? = null,
+        /**
+         * SponsorBlock categories to cut out during download (yt-dlp `--sponsorblock-remove`), e.g.
+         * "sponsor" or "all". yt-dlp drives the bundled ffmpeg (auto-wired via --ffmpeg-location) to
+         * remove the segments. Null = no SponsorBlock. This is the original "SponsorBlock-on-download"
+         * goal, on the from-source API-23 stack.
+         */
+        sponsorBlockCategories: String? = null,
     ): Flow<DownloadProgress> = callbackFlow {
         ensureInit()
         val request = YoutubeDLRequest(url)
         request.addOption("-o", outputTemplate)
         if (formatSelector != null) request.addOption("-f", formatSelector)
+        if (sponsorBlockCategories != null) request.addOption("--sponsorblock-remove", sponsorBlockCategories)
 
         val job = launch(Dispatchers.IO) {
             try {
