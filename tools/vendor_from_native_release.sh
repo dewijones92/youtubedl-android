@@ -3,20 +3,14 @@
 # (native-vX.Y.Z) into this repo's jniLibs.
 #
 # This REPLACES the old approach (yausername's API-24 binaries binary-patched on-disk with an
-# LD_PRELOAD shim + page-padding via tools/patch_natives_api23.sh). The bundles consumed here are
-# built FROM SOURCE targeting API 23, so they have ZERO undefined API-24 symbols and need no shim.
+# LD_PRELOAD shim + page-padding). The bundles consumed here are built FROM SOURCE targeting
+# API 23, so they have ZERO undefined API-24 symbols and need no shim.
 #
-# Per ABI, lays out the bundles exactly as YoutubeDL.kt expects:
-#   library/jniLibs/<abi>/libpython.so      <- bundle-python  usr/bin/python3.13  (loader exe)
-#   library/jniLibs/<abi>/libpython.zip.so  <- bundle-python  usr/ tree (zipped, incl. stdlib+certs)
-#   library/jniLibs/<abi>/libqjs.so         <- bundle-qjs     usr/bin/qjs         (loader exe)
-#   ffmpeg/jniLibs/<abi>/libffmpeg.so       <- bundle-ffmpeg  usr/bin/ffmpeg
-#   ffmpeg/jniLibs/<abi>/libffprobe.so      <- bundle-ffmpeg  usr/bin/ffprobe
-#   ffmpeg/jniLibs/<abi>/libffmpeg.zip.so   <- bundle-ffmpeg  usr/ tree (zipped)
-#   aria2c/jniLibs/<abi>/libaria2c.so       <- bundle-aria2c  usr/bin/aria2c
-#   aria2c/jniLibs/<abi>/libaria2c.zip.so   <- bundle-aria2c  usr/ tree (zipped)
-#
-# 64-bit only (matches L1): arm64-v8a + x86_64. Any 32-bit ABI dirs are removed (see README).
+# The bundle -> module -> loader layout is NOT hardcoded here: it is driven by the
+# runtime-bundle-manifest.json published in the same release (the single source of the L1->L3
+# contract, also used by L1's collect-runtime-bundle.sh). The 'out' loader names and 'zip' names
+# in that manifest must match the youtubedl-android runtime constants (YoutubeDL.kt / FFmpeg.kt /
+# Aria2c.kt). 64-bit only (arm64-v8a + x86_64); any 32-bit ABI dirs are removed.
 #
 # Usage: tools/vendor_from_native_release.sh <native-tag> [owner/repo]
 set -euo pipefail
@@ -25,54 +19,59 @@ REPO="${2:-dewijones92/termux-packages}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 
-# termux arch -> android ABI
-declare -A ABI=( [aarch64]=arm64-v8a [x86_64]=x86_64 )
-
-echo "Downloading $TAG runtime bundles from $REPO ..."
-gh release download "$TAG" --repo "$REPO" --dir "$WORK" --pattern 'bundle-*.tar' --clobber
+echo "Downloading $TAG runtime bundles + manifest from $REPO ..."
+gh release download "$TAG" --repo "$REPO" --dir "$WORK" --clobber \
+  --pattern 'bundle-*.tar' --pattern 'runtime-bundle-manifest.json'
+MANIFEST="$WORK/runtime-bundle-manifest.json"
+[ -f "$MANIFEST" ] || { echo "ERROR: runtime-bundle-manifest.json missing from $TAG"; exit 1; }
 
 # Page-pad to a 4096 boundary: the strict API-23 linker refuses a final LOAD segment whose contents
 # end exactly at EOF. Harmless on the from-source libs; applied to loader exes for safety.
 pad4096(){ local f="$1" sz p; sz=$(stat -c%s "$f"); p=$(( (4096 - sz%4096)%4096 )); [ "$p" -gt 0 ] && head -c "$p" /dev/zero >> "$f" || true; }
 
-extract(){ local module="$1" arch="$2" d="$WORK/$1-$2"; rm -rf "$d"; mkdir -p "$d"; tar xf "$WORK/bundle-$module-$arch.tar" -C "$d"; printf '%s' "$d"; }
+# termux-arch -> android-abi pairs from the manifest
+mapfile -t ARCH_PAIRS < <(jq -r '.abis | to_entries[] | "\(.key) \(.value)"' "$MANIFEST")
 
-zip_usr(){ local srcdir="$1" dest="$2"; rm -f "$dest"; ( cd "$srcdir" && zip --symlinks -qr -X "$dest" usr ); }
-
-for arch in "${!ABI[@]}"; do
-  abi="${ABI[$arch]}"
+for pair in "${ARCH_PAIRS[@]}"; do
+  arch="${pair%% *}"; abi="${pair##* }"
   echo "== $arch -> $abi =="
-  for module in python qjs ffmpeg aria2c; do
-    [ -f "$WORK/bundle-$module-$arch.tar" ] || { echo "ERROR: missing bundle-$module-$arch.tar in $TAG"; exit 1; }
-  done
+  while IFS= read -r b; do
+    name="$(printf '%s' "$b" | jq -r '.name')"
+    module="$(printf '%s' "$b" | jq -r '.module')"
+    zip="$(printf '%s' "$b" | jq -r '.zip // empty')"
+    tar="$WORK/bundle-$name-$arch.tar"
+    [ -f "$tar" ] || { echo "ERROR: missing bundle-$name-$arch.tar in $TAG"; exit 1; }
 
-  # library module: python (loader+zip) + qjs (loader only; self-contained)
-  pyd="$(extract python "$arch")"; qjd="$(extract qjs "$arch")"
-  ld="$ROOT/library/src/main/jniLibs/$abi"; mkdir -p "$ld"
-  cp "$pyd/usr/bin/python3.13" "$ld/libpython.so"; pad4096 "$ld/libpython.so"
-  zip_usr "$pyd" "$ld/libpython.zip.so"
-  cp "$qjd/usr/bin/qjs" "$ld/libqjs.so"; pad4096 "$ld/libqjs.so"
+    d="$WORK/$name-$arch"; rm -rf "$d"; mkdir -p "$d"; tar xf "$tar" -C "$d"
+    jnidir="$ROOT/$module/src/main/jniLibs/$abi"; mkdir -p "$jnidir"
 
-  # ffmpeg module
-  fd="$(extract ffmpeg "$arch")"
-  fld="$ROOT/ffmpeg/src/main/jniLibs/$abi"; mkdir -p "$fld"
-  cp "$fd/usr/bin/ffmpeg"  "$fld/libffmpeg.so";  pad4096 "$fld/libffmpeg.so"
-  cp "$fd/usr/bin/ffprobe" "$fld/libffprobe.so"; pad4096 "$fld/libffprobe.so"
-  zip_usr "$fd" "$fld/libffmpeg.zip.so"
+    # loaders: rename usr/bin/<bin> -> jniLibs/<abi>/<out>
+    while IFS= read -r ldr; do
+      out="${ldr%% *}"; bin="${ldr##* }"
+      cp "$d/usr/bin/$bin" "$jnidir/$out"; pad4096 "$jnidir/$out"
+    done < <(printf '%s' "$b" | jq -r '.loaders[] | "\(.out) \(.bin)"')
 
-  # aria2c module
-  ad="$(extract aria2c "$arch")"
-  ald="$ROOT/aria2c/src/main/jniLibs/$abi"; mkdir -p "$ald"
-  cp "$ad/usr/bin/aria2c" "$ald/libaria2c.so"; pad4096 "$ald/libaria2c.so"
-  zip_usr "$ad" "$ald/libaria2c.zip.so"
+    # zip: pack the usr/ tree as <out>.zip.so (preserves symlinks for SONAME lookup)
+    if [ -n "$zip" ]; then
+      rm -f "$jnidir/$zip"
+      ( cd "$d" && zip --symlinks -qr -X "$jnidir/$zip" usr )
+    fi
+  done < <(jq -c '.bundles[]' "$MANIFEST")
 done
 
-# L1 is 64-bit only; remove any leftover 32-bit ABI dirs.
-for m in library ffmpeg aria2c; do
-  for old in armeabi-v7a x86; do rm -rf "$ROOT/$m/src/main/jniLibs/$old"; done
+# Keep only the ABIs the manifest defines; remove any leftover (e.g. dropped 32-bit) dirs.
+keep="$(jq -r '.abis | to_entries[] | .value' "$MANIFEST" | sort -u)"
+for module in $(jq -r '.bundles[].module' "$MANIFEST" | sort -u); do
+  base="$ROOT/$module/src/main/jniLibs"
+  [ -d "$base" ] || continue
+  for d in "$base"/*/; do
+    a="$(basename "$d")"
+    grep -qx "$a" <<<"$keep" || { echo "removing stale ABI $module/$a"; rm -rf "$d"; }
+  done
 done
 
 echo
-echo "Vendored $TAG (from source, API 23) into jniLibs: arm64-v8a + x86_64. 32-bit removed."
-echo "Resulting layout:"
-for m in library ffmpeg aria2c; do find "$ROOT/$m/src/main/jniLibs" -maxdepth 2 -name '*.so' -printf '  %P  (%s bytes)\n' 2>/dev/null | sort; done
+echo "Vendored $TAG (from source, API 23) into jniLibs. ABIs: $(tr '\n' ' ' <<<"$keep")"
+for module in $(jq -r '.bundles[].module' "$MANIFEST" | sort -u); do
+  find "$ROOT/$module/src/main/jniLibs" -maxdepth 2 -name '*.so' -printf '  %P  (%s bytes)\n' 2>/dev/null | sort
+done
