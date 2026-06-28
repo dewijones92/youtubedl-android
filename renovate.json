@@ -1,0 +1,18 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":pinDigests",
+    ":semanticCommitsDisabled"
+  ],
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "description": "Group GitHub Actions bumps (all pinned by SHA).",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions"
+    }
+  ],
+  "_note": "Activates once the Renovate GitHub App is enabled on this repo. Keeps the SHA-pinned actions + Gradle deps current (tier-B 'Renovate for upstream bumps')."
+}
