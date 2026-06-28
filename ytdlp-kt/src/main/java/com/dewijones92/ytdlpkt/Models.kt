@@ -49,3 +49,8 @@ sealed interface DownloadProgress {
     data class Progress(val percent: Float, val etaSeconds: Long, val line: String) : DownloadProgress
     data class Completed(val exitCode: Int) : DownloadProgress
 }
+
+/** Java-friendly progress callback for [YtdlpKt.downloadBlocking]. */
+fun interface ProgressListener {
+    fun onProgress(percent: Float, etaSeconds: Long, line: String)
+}

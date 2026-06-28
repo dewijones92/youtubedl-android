@@ -112,6 +112,30 @@ object YtdlpKt {
     @JvmOverloads
     fun searchBlocking(query: String, limit: Int = 10): List<MediaInfo> =
         runBlocking { search(query, limit) }
+
+    /**
+     * Blocking download (for Java callers / a download service thread). Returns yt-dlp's exit code
+     * (0 = success). [sponsorBlockCategories] e.g. "sponsor" or "all" removes those segments via
+     * yt-dlp + the bundled ffmpeg. Call off the main thread.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun downloadBlocking(
+        url: String,
+        outputTemplate: String,
+        formatSelector: String? = null,
+        sponsorBlockCategories: String? = null,
+        listener: ProgressListener? = null,
+    ): Int = runBlocking {
+        var exit = -1
+        download(url, outputTemplate, formatSelector, sponsorBlockCategories).collect { p ->
+            when (p) {
+                is DownloadProgress.Progress -> listener?.onProgress(p.percent, p.etaSeconds, p.line)
+                is DownloadProgress.Completed -> exit = p.exitCode
+            }
+        }
+        exit
+    }
 }
 
 // ---- mapping (pure, unit-tested) ----

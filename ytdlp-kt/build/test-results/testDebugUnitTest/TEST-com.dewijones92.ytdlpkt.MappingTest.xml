@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.dewijones92.ytdlpkt.MappingTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-06-28T19:41:31.750Z" hostname="APTEM-D61QB54" time="0.12">
+<testsuite name="com.dewijones92.ytdlpkt.MappingTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-06-28T20:01:28.590Z" hostname="APTEM-D61QB54" time="0.114">
   <properties/>
-  <testcase name="mapsTopLevelFields" classname="com.dewijones92.ytdlpkt.MappingTest" time="0.103"/>
+  <testcase name="mapsTopLevelFields" classname="com.dewijones92.ytdlpkt.MappingTest" time="0.098"/>
   <testcase name="classifiesFormats" classname="com.dewijones92.ytdlpkt.MappingTest" time="0.011"/>
-  <testcase name="mapsFormatDetails" classname="com.dewijones92.ytdlpkt.MappingTest" time="0.006"/>
+  <testcase name="mapsFormatDetails" classname="com.dewijones92.ytdlpkt.MappingTest" time="0.005"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>
