@@ -4,4 +4,4 @@
 jdk:
   - openjdk17
 install:
-  - ./gradlew :common:publishToMavenLocal :library:publishToMavenLocal :ffmpeg:publishToMavenLocal
+  - ./gradlew :common:publishToMavenLocal :library:publishToMavenLocal :ffmpeg:publishToMavenLocal :aria2c:publishToMavenLocal
