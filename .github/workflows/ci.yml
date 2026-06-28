@@ -75,7 +75,13 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew :app:connectedDebugAndroidTest --console=plain
+          script: |
+            # Gating: binaries load + run on API 23 (deterministic, no network).
+            ./gradlew :app:connectedDebugAndroidTest --console=plain
+            # Non-gating: REAL on-device YouTube extraction via the SDK (flaky: 403/nsig/SABR).
+            # Signal only — must not fail the pipeline.
+            ./gradlew :ytdlp-kt:connectedDebugAndroidTest --console=plain \
+              || echo "::warning title=network-extraction::SDK on-device YouTube extraction smoke test FAILED (non-gating)"
 
       - name: Upload androidTest report (on failure)
         if: failure()

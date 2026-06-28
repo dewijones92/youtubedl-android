@@ -1,0 +1,16 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /home/dewi/code/youtubedl-android/ytdlp-kt/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest16536698394551621920.xml:2:13-83
+INJECTED from /home/dewi/code/youtubedl-android/ytdlp-kt/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest16536698394551621920.xml:2:13-83
+	package
+		INJECTED from /home/dewi/code/youtubedl-android/ytdlp-kt/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest16536698394551621920.xml
+	xmlns:android
+		ADDED from /home/dewi/code/youtubedl-android/ytdlp-kt/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest16536698394551621920.xml:2:23-81
+uses-sdk
+INJECTED from /home/dewi/code/youtubedl-android/ytdlp-kt/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest16536698394551621920.xml reason: use-sdk injection requested
+INJECTED from /home/dewi/code/youtubedl-android/ytdlp-kt/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest16536698394551621920.xml
+INJECTED from /home/dewi/code/youtubedl-android/ytdlp-kt/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest16536698394551621920.xml
+	android:targetSdkVersion
+		INJECTED from /home/dewi/code/youtubedl-android/ytdlp-kt/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest16536698394551621920.xml
+	android:minSdkVersion
+		INJECTED from /home/dewi/code/youtubedl-android/ytdlp-kt/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest16536698394551621920.xml

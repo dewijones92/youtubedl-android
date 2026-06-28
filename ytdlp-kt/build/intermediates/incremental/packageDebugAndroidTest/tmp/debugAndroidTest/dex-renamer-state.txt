@@ -1,0 +1,13 @@
+#Sun Jun 28 15:43:21 BST 2026
+path.3=3/classes.dex
+path.2=0/classes.dex
+path.1=0/classes.dex
+path.0=classes.dex
+base.3=/home/dewi/code/youtubedl-android/ytdlp-kt/build/intermediates/dex/debugAndroidTest/mergeProjectDexDebugAndroidTest/3/classes.dex
+base.2=/home/dewi/code/youtubedl-android/ytdlp-kt/build/intermediates/dex/debugAndroidTest/mergeProjectDexDebugAndroidTest/0/classes.dex
+base.1=/home/dewi/code/youtubedl-android/ytdlp-kt/build/intermediates/dex/debugAndroidTest/mergeLibDexDebugAndroidTest/0/classes.dex
+base.0=/home/dewi/code/youtubedl-android/ytdlp-kt/build/intermediates/dex/debugAndroidTest/mergeExtDexDebugAndroidTest/classes.dex
+renamed.3=classes4.dex
+renamed.2=classes3.dex
+renamed.1=classes2.dex
+renamed.0=classes.dex
