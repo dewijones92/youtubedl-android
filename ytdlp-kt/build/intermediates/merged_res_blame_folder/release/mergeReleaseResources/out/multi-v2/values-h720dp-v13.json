@@ -1,0 +1,34 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.dewijones92.ytdlpkt.ytdlp-kt-mergeReleaseResources-18:/values-h720dp-v13/values-h720dp-v13.xml",
+            "map": [
+                {
+                    "source": "/home/dewi/.gradle/caches/8.14.3/transforms/bce7a6d1f6aff3c165cec26424e2045b/transformed/appcompat-1.4.2/res/values-h720dp-v13/values-h720dp-v13.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "66",
+                        "endOffsets": "117"
+                    }
+                }
+            ]
+        },
+        {
+            "outputFile": "com.dewijones92.ytdlpkt.ytdlp-kt-release-20:/values-h720dp-v13/values-h720dp-v13.xml",
+            "map": [
+                {
+                    "source": "/home/dewi/.gradle/caches/8.14.3/transforms/bce7a6d1f6aff3c165cec26424e2045b/transformed/appcompat-1.4.2/res/values-h720dp-v13/values-h720dp-v13.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "66",
+                        "endOffsets": "117"
+                    }
+                }
+            ]
+        }
+    ]
+}

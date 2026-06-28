@@ -1,0 +1,18 @@
+[
+    {
+        "merged": "com.dewijones92.ytdlpkt.ytdlp-kt-release-20:/layout-v21/notification_action_tombstone.xml",
+        "source": "com.dewijones92.ytdlpkt.ytdlp-kt-core-1.8.0-0:/layout-v21/notification_action_tombstone.xml"
+    },
+    {
+        "merged": "com.dewijones92.ytdlpkt.ytdlp-kt-release-20:/layout-v21/notification_template_custom_big.xml",
+        "source": "com.dewijones92.ytdlpkt.ytdlp-kt-core-1.8.0-0:/layout-v21/notification_template_custom_big.xml"
+    },
+    {
+        "merged": "com.dewijones92.ytdlpkt.ytdlp-kt-release-20:/layout-v21/notification_template_icon_group.xml",
+        "source": "com.dewijones92.ytdlpkt.ytdlp-kt-core-1.8.0-0:/layout-v21/notification_template_icon_group.xml"
+    },
+    {
+        "merged": "com.dewijones92.ytdlpkt.ytdlp-kt-release-20:/layout-v21/notification_action.xml",
+        "source": "com.dewijones92.ytdlpkt.ytdlp-kt-core-1.8.0-0:/layout-v21/notification_action.xml"
+    }
+]

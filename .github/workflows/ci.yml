@@ -54,8 +54,11 @@ jobs:
       - name: API-23 symbol gate (deterministic)
         run: ./tools/check_api23_symbols.sh
 
+      - name: SDK unit tests (L4 typed mapping)
+        run: ./gradlew :ytdlp-kt:testDebugUnitTest --console=plain
+
       - name: Assemble AARs
-        run: ./gradlew :common:assembleRelease :library:assembleRelease :ffmpeg:assembleRelease :aria2c:assembleRelease --console=plain
+        run: ./gradlew :common:assembleRelease :library:assembleRelease :ffmpeg:assembleRelease :aria2c:assembleRelease :ytdlp-kt:assembleRelease --console=plain
 
       - name: Enable KVM (for the API-23 emulator)
         run: |
@@ -88,7 +91,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out
-          for m in common library ffmpeg aria2c; do
+          for m in common library ffmpeg aria2c ytdlp-kt; do
             cp -v "$m/build/outputs/aar/$m-release.aar" "out/$m-${GITHUB_REF_NAME}.aar"
           done
           ( cd out && sha256sum *.aar | sort -k2 | tee "SHA256SUMS.txt" )

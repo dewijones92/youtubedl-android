@@ -1,4 +1,4 @@
-include(":common", ":app", ":library", ":ffmpeg", ":aria2c")
+include(":common", ":app", ":library", ":ffmpeg", ":aria2c", ":ytdlp-kt")
 
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)

@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.dewijones92.ytdlpkt.ytdlp-kt-release-20:/layout-watch-v20/abc_alert_dialog_button_bar_material.xml",
+        "source": "com.dewijones92.ytdlpkt.ytdlp-kt-appcompat-1.4.2-6:/layout-watch-v20/abc_alert_dialog_button_bar_material.xml"
+    },
+    {
+        "merged": "com.dewijones92.ytdlpkt.ytdlp-kt-release-20:/layout-watch-v20/abc_alert_dialog_title_material.xml",
+        "source": "com.dewijones92.ytdlpkt.ytdlp-kt-appcompat-1.4.2-6:/layout-watch-v20/abc_alert_dialog_title_material.xml"
+    }
+]
