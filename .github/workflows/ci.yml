@@ -79,9 +79,9 @@ jobs:
             # Gating: binaries load + run on API 23 (deterministic, no network).
             ./gradlew :app:connectedDebugAndroidTest --console=plain
             # Non-gating: REAL on-device YouTube extraction via the SDK (flaky: 403/nsig/SABR).
-            # Signal only — must not fail the pipeline.
-            ./gradlew :ytdlp-kt:connectedDebugAndroidTest --console=plain \
-              || echo "::warning title=network-extraction::SDK on-device YouTube extraction smoke test FAILED (non-gating)"
+            # Signal only — must not fail the pipeline. Single line: the action runs script lines
+            # individually, so a `\` continuation would be passed to gradle as a task name.
+            ./gradlew :ytdlp-kt:connectedDebugAndroidTest --console=plain || echo "::warning title=network-extraction::SDK on-device YouTube extraction smoke test FAILED (non-gating)"
 
       - name: Upload androidTest report (on failure)
         if: failure()
