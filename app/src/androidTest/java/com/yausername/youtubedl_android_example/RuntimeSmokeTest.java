@@ -2,7 +2,7 @@ package com.yausername.youtubedl_android_example;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import android.content.Context;
 
@@ -78,11 +78,15 @@ public class RuntimeSmokeTest {
         Process p = pb.start();
         String out = new String(readAll(p), "UTF-8");
         int code = p.waitFor();
-        // A link failure on API 23 surfaces here; assert the binary actually loaded.
-        assertFalse(binName + " failed to link: " + out,
-                out.contains("CANNOT LINK") || out.contains("cannot locate symbol"));
-        assertEquals(binName + " exit code (out=" + out + ")", 0, code);
-        assertTrue(binName + " produced no output", out.trim().length() > 0);
+        // Linker warnings (unused DT entry / unsupported DT_FLAGS_1) are EXPECTED noise on API 23
+        // and non-fatal. A real failure is a non-zero exit, an explicit link error, or no output.
+        boolean linkFail = out.contains("CANNOT LINK") || out.contains("cannot locate symbol")
+                || out.contains("library \"") && out.contains("not found");
+        boolean ok = code == 0 && !linkFail && out.trim().length() > 0;
+        if (!ok) {
+            fail(binName + ": exitCode=" + code + " linkFail=" + linkFail
+                    + " outLen=" + out.length() + " out=[" + out + "]");
+        }
     }
 
     private static byte[] readAll(Process p) throws Exception {
