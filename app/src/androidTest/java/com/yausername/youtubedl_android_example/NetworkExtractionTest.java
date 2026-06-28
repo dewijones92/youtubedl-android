@@ -37,14 +37,10 @@ public class NetworkExtractionTest {
 
     @Test
     public void resolveRealYouTubeVideo() throws Exception {
-        // "Me at the zoo" — the first YouTube video, stable id.
-        // NOTE: on CI (GitHub datacenter IP) this reliably hits YouTube's "Sign in to confirm
-        // you're not a bot" block AFTER a successful nsig/JS run — confirmed unchanged with the
-        // 'tv' client and yt-dlp 2026.06.09, i.e. it's pure cloud-IP reputation, not a stack
-        // defect. Kept non-gating; real-device (residential/mobile IP) is the true validation.
-        YoutubeDLRequest request = new YoutubeDLRequest("https://www.youtube.com/watch?v=jNQXAC9IVRw");
-        request.addOption("--extractor-args", "youtube:player_client=tv");
-        VideoInfo info = YoutubeDL.getInstance().getInfo(request);
+        // "Me at the zoo" — the first YouTube video, stable id. Use yt-dlp defaults (the tv client
+        // is currently DRM-gated; the default android_vr client works). On a datacenter IP (CI)
+        // this hits YouTube's bot-block; on a residential/real-device network it resolves.
+        VideoInfo info = YoutubeDL.getInstance().getInfo("https://www.youtube.com/watch?v=jNQXAC9IVRw");
         int formatCount = info.getFormats() == null ? 0 : info.getFormats().size();
         Log.i("ExtractSignal", "title='" + info.getTitle() + "' formats=" + formatCount);
         assertNotNull("formats null", info.getFormats());
