@@ -76,15 +76,11 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
-            # Gating: binaries load + run on API 23 (deterministic, no network).
-            ./gradlew :app:connectedDebugAndroidTest --console=plain
-            # Non-gating: REAL on-device YouTube extraction via the SDK (flaky: 403/nsig/SABR).
-            # Signal only — must not fail the pipeline. Single line: the action runs script lines
-            # individually, so a `\` continuation would be passed to gradle as a task name.
-            ./gradlew :ytdlp-kt:connectedDebugAndroidTest --console=plain || echo "::warning title=network-extraction::SDK on-device YouTube extraction smoke test FAILED (non-gating)"
+            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.yausername.youtubedl_android_example.RuntimeSmokeTest --console=plain
+            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.yausername.youtubedl_android_example.NetworkExtractionTest --console=plain || echo "::warning title=network-extraction::on-device YouTube extraction FAILED (non-gating signal)"
 
-      - name: Upload androidTest report (on failure)
-        if: failure()
+      - name: Upload androidTest report (always — captures non-gating extraction signal)
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: androidTest-report

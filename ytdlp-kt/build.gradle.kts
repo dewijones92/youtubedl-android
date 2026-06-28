@@ -42,7 +42,4 @@ dependencies {
 
     testImplementation("junit:junit:${rootProject.extra["junitVer"]}")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.6.4")
-
-    androidTestImplementation("androidx.test.ext:junit:${rootProject.extra["androidJunitVer"]}")
-    androidTestImplementation("androidx.test:runner:1.5.2")
 }
