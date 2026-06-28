@@ -11,6 +11,7 @@ import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.yausername.ffmpeg.FFmpeg;
 import com.yausername.youtubedl_android.YoutubeDL;
+import com.yausername.youtubedl_android.YoutubeDLRequest;
 import com.yausername.youtubedl_android.mapper.VideoInfo;
 
 import org.junit.BeforeClass;
@@ -37,7 +38,11 @@ public class NetworkExtractionTest {
     @Test
     public void resolveRealYouTubeVideo() throws Exception {
         // "Me at the zoo" — the first YouTube video, stable id.
-        VideoInfo info = YoutubeDL.getInstance().getInfo("https://www.youtube.com/watch?v=jNQXAC9IVRw");
+        // Use the 'tv' player client: on datacenter IPs (CI) it often avoids YouTube's
+        // "Sign in to confirm you're not a bot" / PO-token gate that the default web client hits.
+        YoutubeDLRequest request = new YoutubeDLRequest("https://www.youtube.com/watch?v=jNQXAC9IVRw");
+        request.addOption("--extractor-args", "youtube:player_client=tv");
+        VideoInfo info = YoutubeDL.getInstance().getInfo(request);
         int formatCount = info.getFormats() == null ? 0 : info.getFormats().size();
         Log.i("ExtractSignal", "title='" + info.getTitle() + "' formats=" + formatCount);
         assertNotNull("formats null", info.getFormats());
