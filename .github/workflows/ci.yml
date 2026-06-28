@@ -1,0 +1,104 @@
+# L3 of the stack: build the youtubedl-android AARs and verify the from-source API-23 native
+# runtime (consumed from the termux-packages fork, native-v* release) actually loads + runs on a
+# real Android 6.0 (API 23) emulator. JitPack is the public consumption path (it builds the AARs
+# from the tag); this workflow is the quality gate around it.
+#
+# Tier-B (best-practices-lite):
+#  - CI vs CD: PRs / manual runs build + verify only; pushing a `v*` tag also publishes a Release.
+#  - Pinning: every action pinned by commit SHA.
+#  - Verify-gate (two layers):
+#      1. Deterministic symbol gate (tools/check_api23_symbols.sh) — no API-24+ libc symbols.
+#      2. API-23 x86_64 emulator: instrumented test loads + runs python/yt-dlp, ffmpeg, ffprobe,
+#         quickjs and aria2c (RuntimeSmokeTest). This is what proves the bundles work on 6.0.
+#  - Immutable, checksummed Release assets + SLSA build-provenance attestation (tags only).
+name: CI (API 23 verify + publish)
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      native_tag:
+        description: "termux-packages native-* release to vendor before building (blank = use committed jniLibs)"
+        default: ""
+
+permissions: {}
+
+jobs:
+  build-verify:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # CD: create the Release (tags only)
+      id-token: write # CD: provenance attestation
+      attestations: write # CD: provenance attestation
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Re-vendor native runtime (optional, manual runs only)
+        if: github.event_name == 'workflow_dispatch' && inputs.native_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./tools/vendor_from_native_release.sh "${{ inputs.native_tag }}"
+
+      - name: API-23 symbol gate (deterministic)
+        run: ./tools/check_api23_symbols.sh
+
+      - name: Assemble AARs
+        run: ./gradlew :common:assembleRelease :library:assembleRelease :ffmpeg:assembleRelease :aria2c:assembleRelease --console=plain
+
+      - name: Enable KVM (for the API-23 emulator)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: API-23 emulator verify-gate (loads + runs the native runtime)
+        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2.37.0
+        with:
+          api-level: 23
+          arch: x86_64
+          target: default
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: ./gradlew :app:connectedDebugAndroidTest --console=plain
+
+      # ---------------- CD: tags only ----------------
+      - name: Collect AARs + checksums
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          for m in common library ffmpeg aria2c; do
+            cp -v "$m/build/outputs/aar/$m-release.aar" "out/$m-${GITHUB_REF_NAME}.aar"
+          done
+          ( cd out && sha256sum *.aar | sort -k2 | tee "SHA256SUMS.txt" )
+
+      - name: Attest build provenance
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: "out/*.aar"
+
+      - name: Publish to Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          body: |
+            youtubedl-android (API-23 fork) AARs. Public consumption is via JitPack:
+            `com.github.dewijones92.youtubedl-android:{common,library,ffmpeg,aria2c}:${{ github.ref_name }}`
+            These attached AARs are the same artifacts, with SHA-256 checksums + SLSA provenance.
+          files: |
+            out/*.aar
+            out/SHA256SUMS.txt
