@@ -30,7 +30,9 @@ jobs:
         run: |
           set -euo pipefail
           BUNDLED=library/src/main/res/raw/ytdlp
-          current="$(unzip -p "$BUNDLED" yt_dlp/version.py | grep __version__ | cut -d"'" -f2)"
+          # The zipapp has a shebang prefix (unzip warns + exits non-zero under pipefail), so read
+          # the version by running it instead.
+          current="$(python3 "$BUNDLED" --version 2>/dev/null | head -1 | tr -d '[:space:]')"
           latest="$(gh api repos/yt-dlp/yt-dlp/releases/latest --jq .tag_name)"
           echo "current=$current latest=$latest"
           if [ "$current" = "$latest" ]; then
@@ -39,7 +41,7 @@ jobs:
           url="$(gh api repos/yt-dlp/yt-dlp/releases/latest --jq '.assets[]|select(.name=="yt-dlp")|.browser_download_url')"
           [ -n "$url" ] || { echo "no 'yt-dlp' zipapp asset in $latest"; exit 1; }
           curl -fsSL -o "$BUNDLED" "$url"
-          got="$(unzip -p "$BUNDLED" yt_dlp/version.py | grep __version__ | cut -d"'" -f2)"
+          got="$(python3 "$BUNDLED" --version 2>/dev/null | head -1 | tr -d '[:space:]')"
           [ "$got" = "$latest" ] || { echo "downloaded version $got != $latest"; exit 1; }
           { echo "changed=true"; echo "current=$current"; echo "latest=$latest"; } >> "$GITHUB_OUTPUT"
 
