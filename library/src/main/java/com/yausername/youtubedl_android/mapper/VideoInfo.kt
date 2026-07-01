@@ -75,7 +75,19 @@ class VideoInfo {
     val formats: ArrayList<VideoFormat>? = null
     val thumbnails: ArrayList<VideoThumbnail>? = null
 
-    //private ArrayList<VideoSubtitle> subtitles;
+    @JsonProperty("is_live")
+    val isLive: Boolean? = null
+
+    @JsonProperty("live_status")
+    val liveStatus: String? = null
+
+    /** lang code -> tracks. Human-uploaded subtitles. */
+    val subtitles: Map<String, ArrayList<VideoSubtitle>>? = null
+
+    /** lang code -> tracks. Auto-generated captions (yt-dlp `automatic_captions`). */
+    @JsonProperty("automatic_captions")
+    val automaticCaptions: Map<String, ArrayList<VideoSubtitle>>? = null
+
     @JsonProperty("manifest_url")
     val manifestUrl: String? = null
     val url: String? = null

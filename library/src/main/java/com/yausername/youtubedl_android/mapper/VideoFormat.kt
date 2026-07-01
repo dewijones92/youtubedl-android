@@ -19,6 +19,9 @@ class VideoFormat {
     val preference = 0
     val vcodec: String? = null
     val acodec: String? = null
+
+    /** Audio track language (yt-dlp `language`), for multi-audio/dubbed videos. */
+    val language: String? = null
     val width = 0
     val height = 0
 
