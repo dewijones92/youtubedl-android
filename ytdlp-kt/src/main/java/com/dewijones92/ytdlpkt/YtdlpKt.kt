@@ -105,6 +105,9 @@ object YtdlpKt {
      * Create a local-HLS playback bridge: the bundled ffmpeg fetches [videoUrl] (+ optional
      * [audioUrl]) and remuxes them (stream copy) into a growing local HLS event playlist under
      * [outputDir], which a player plays from local storage — it never contacts the remote host.
+     * [startAtSeconds] > 0 muxes from that media offset (seek-triggered remux: ffmpeg
+     * range-seeks into the remote streams) while the playlist declares the skipped head as
+     * EXT-X-GAP segments so player positions stay in true media time.
      * Call [LocalHlsBridgeSession.start] to launch and [LocalHlsBridgeSession.stop] to kill +
      * clean up. Java-friendly.
      */
@@ -115,9 +118,10 @@ object YtdlpKt {
         audioUrl: String?,
         outputDir: java.io.File,
         segmentSeconds: Int = 4,
+        startAtSeconds: Int = 0,
     ): LocalHlsBridgeSession {
         ensureInit()
-        return LocalHlsBridgeSession(videoUrl, audioUrl, outputDir, segmentSeconds)
+        return LocalHlsBridgeSession(videoUrl, audioUrl, outputDir, segmentSeconds, startAtSeconds)
     }
 
     private fun ensureInit() = check(initialized) { "YtdlpKt.init(context) must be called first" }
