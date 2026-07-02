@@ -1,0 +1,138 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "io.github.junkfood02.youtubedl-android",
+    "module": "ytdlp-kt",
+    "version": "0.18.6",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.14.3"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib-jdk8",
+          "version": {
+            "requires": "1.7.22"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "ytdlp-kt-0.18.6.aar",
+          "url": "ytdlp-kt-0.18.6.aar",
+          "size": 50177,
+          "sha512": "f0780c6537acca1e5ac1c282dbbbf6e3b628f2ec0d57a143b7a52b8c21efc2446d86aafa797257a76b77078d6c8a68221aa787cc16c2998fed171a2d8bc714a8",
+          "sha256": "05687be1890a31edf3ecfc9ed907e7ebd7b045a47fcfdd2303513a3607511e7f",
+          "sha1": "a76462364e44f7f2ada06e445cff23f38a84b8b3",
+          "md5": "ab88a3197b5875ba41ad15c6df02776a"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib-jdk8",
+          "version": {
+            "requires": "1.7.22"
+          }
+        },
+        {
+          "group": "io.github.junkfood02.youtubedl-android",
+          "module": "library",
+          "version": {
+            "requires": "0.18.6"
+          }
+        },
+        {
+          "group": "io.github.junkfood02.youtubedl-android",
+          "module": "ffmpeg",
+          "version": {
+            "requires": "0.18.6"
+          }
+        },
+        {
+          "group": "io.github.junkfood02.youtubedl-android",
+          "module": "aria2c",
+          "version": {
+            "requires": "0.18.6"
+          }
+        },
+        {
+          "group": "androidx.core",
+          "module": "core-ktx",
+          "version": {
+            "requires": "1.8.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-android",
+          "version": {
+            "requires": "1.6.4"
+          }
+        },
+        {
+          "group": "com.fasterxml.jackson.core",
+          "module": "jackson-databind",
+          "version": {
+            "requires": "2.11.1"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "ytdlp-kt-0.18.6.aar",
+          "url": "ytdlp-kt-0.18.6.aar",
+          "size": 50177,
+          "sha512": "f0780c6537acca1e5ac1c282dbbbf6e3b628f2ec0d57a143b7a52b8c21efc2446d86aafa797257a76b77078d6c8a68221aa787cc16c2998fed171a2d8bc714a8",
+          "sha256": "05687be1890a31edf3ecfc9ed907e7ebd7b045a47fcfdd2303513a3607511e7f",
+          "sha1": "a76462364e44f7f2ada06e445cff23f38a84b8b3",
+          "md5": "ab88a3197b5875ba41ad15c6df02776a"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseSourcePublication",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "ytdlp-kt-0.18.6-sources.jar",
+          "url": "ytdlp-kt-0.18.6-sources.jar",
+          "size": 7630,
+          "sha512": "760838e1002c5d57beb5898e10cb9f79a777c6e4c79427e142f358c7603c39a027f411d3a222e320e41f2f4e18b9d1f1d0b72f43245c280785a92c24ae6de89d",
+          "sha256": "83ea4bafd618b7fe0be2dfa58811d66c004a37df378ebec7e107bc8f0e6ef37a",
+          "sha1": "27e9476b04245232cc89f83df57e2d23212a5fb1",
+          "md5": "32f736e5f27f30c3eed94775d0ac320d"
+        }
+      ]
+    }
+  ]
+}

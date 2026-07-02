@@ -101,6 +101,25 @@ object YtdlpKt {
         awaitClose { job.cancel() }
     }
 
+    /**
+     * Create a local-HLS playback bridge: the bundled ffmpeg fetches [videoUrl] (+ optional
+     * [audioUrl]) and remuxes them (stream copy) into a growing local HLS event playlist under
+     * [outputDir], which a player plays from local storage — it never contacts the remote host.
+     * Call [LocalHlsBridgeSession.start] to launch and [LocalHlsBridgeSession.stop] to kill +
+     * clean up. Java-friendly.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun newLocalHlsBridge(
+        videoUrl: String,
+        audioUrl: String?,
+        outputDir: java.io.File,
+        segmentSeconds: Int = 4,
+    ): LocalHlsBridgeSession {
+        ensureInit()
+        return LocalHlsBridgeSession(videoUrl, audioUrl, outputDir, segmentSeconds)
+    }
+
     private fun ensureInit() = check(initialized) { "YtdlpKt.init(context) must be called first" }
 
     // ---- Java-friendly blocking variants (for synchronous callers, e.g. NewPipe's

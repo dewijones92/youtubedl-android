@@ -79,6 +79,28 @@ object YoutubeDL {
         }
     }
 
+    /** Launch spec for invoking a bundled native binary directly (outside yt-dlp). */
+    data class ExecSpec(val binary: File, val environment: Map<String, String>)
+
+    /**
+     * Spec for exec'ing the bundled ffmpeg yourself (e.g. the local-HLS playback bridge in
+     * ytdlp-kt). Mirrors the environment [execute] hands yt-dlp's own ffmpeg subprocesses, so a
+     * direct invocation resolves the same libav + OpenSSL libs and CA bundle. Requires [init].
+     */
+    fun ffmpegExecSpec(): ExecSpec {
+        check(initialized) { "YoutubeDL is not initialized" }
+        return ExecSpec(
+            ffmpegPath!!,
+            mapOf(
+                "LD_LIBRARY_PATH" to ENV_LD_LIBRARY_PATH!!,
+                "SSL_CERT_FILE" to ENV_SSL_CERT_FILE!!,
+                "PATH" to System.getenv("PATH") + ":" + binDir!!.absolutePath,
+                "HOME" to ENV_PYTHONHOME!!,
+                "TMPDIR" to TMPDIR,
+            )
+        )
+    }
+
     @Throws(YoutubeDLException::class)
     fun init_ytdlp(appContext: Context, ytdlpDir: File) {
         if (!ytdlpDir.exists()) ytdlpDir.mkdirs()

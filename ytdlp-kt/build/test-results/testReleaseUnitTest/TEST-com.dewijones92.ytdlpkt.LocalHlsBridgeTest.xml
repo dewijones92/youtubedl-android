@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-07-02T10:08:38.835Z" hostname="APTEM-D61QB54" time="0.03">
+  <properties/>
+  <testcase name="stubPlaylistIsValidSegmentlessEvent" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.01"/>
+  <testcase name="buildsVideoOnlyArgsWithoutAudioMaps" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.017"/>
+  <testcase name="buildsVideoPlusAudioArgs" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
