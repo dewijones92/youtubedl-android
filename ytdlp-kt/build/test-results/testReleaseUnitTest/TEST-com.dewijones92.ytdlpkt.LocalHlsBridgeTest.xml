@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-07-02T20:12:41.412Z" hostname="APTEM-D61QB54" time="0.022">
+<testsuite name="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-07-03T06:28:57.142Z" hostname="APTEM-D61QB54" time="0.032">
   <properties/>
-  <testcase name="stubPlaylistIsValidSegmentlessEvent" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.005"/>
-  <testcase name="gapMergePutsGapsBetweenHeaderAndSegments" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.008"/>
+  <testcase name="stubPlaylistIsValidSegmentlessEvent" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.007"/>
+  <testcase name="playlistBodyStartsAtMapAndDropsEndlist" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.001"/>
+  <testcase name="composeForceEndFinalizesAnUnfinishedPlaylist" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.017"/>
+  <testcase name="sumExtinfCountsMuxedMedia" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.004"/>
   <testcase name="stubWithOffsetCarriesTheGapPrefix" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.0"/>
-  <testcase name="seekArgsAddInputLevelSsBeforeEachInput" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.005"/>
+  <testcase name="seekArgsAddInputLevelSsBeforeEachInput" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.0"/>
+  <testcase name="composeStitchesRestartRunsWithDiscontinuity" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.0"/>
   <testcase name="gapEntriesCoverTheFullOffsetWithGapTags" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.002"/>
   <testcase name="buildsVideoOnlyArgsWithoutAudioMaps" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.0"/>
   <testcase name="buildsVideoPlusAudioArgs" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.0"/>
+  <testcase name="composeSingleRunPutsGapsBetweenHeaderAndSegments" classname="com.dewijones92.ytdlpkt.LocalHlsBridgeTest" time="0.0"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

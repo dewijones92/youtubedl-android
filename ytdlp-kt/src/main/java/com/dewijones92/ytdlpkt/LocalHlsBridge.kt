@@ -11,16 +11,18 @@ import java.io.File
  * never contacts the remote host itself — sidestepping adaptive containers (fragmented MP4 /
  * adaptive WebM) that players can't consume as progressive streams.
  *
- * [start] first writes a stub playlist so a player can begin polling immediately; the real
- * playlist takes over once the first segment is cut. When the mux completes, ENDLIST appears and
- * the playlist becomes a normal VOD. [stop] kills ffmpeg and deletes [outputDir].
- *
  * **Seek-triggered remux**: with [startAtSeconds] > 0 the session muxes from that offset
  * (ffmpeg input-level `-ss` range-seeks into the remote streams, typically ~2-3s) and the
  * playlist declares the skipped head `[0..startAt)` as EXT-X-GAP segments, so the player's
  * window still covers the full timeline and positions/seekbar remain in TRUE media time.
- * ffmpeg then writes to a raw playlist which a merger thread rewrites into [playlistFile]
- * with the gap prefix.
+ *
+ * **Watchdog**: ffmpeg runs as a sequence of RUNS. If a run dies before writing ENDLIST
+ * (network drop, crash, kill), the session restarts it at the point the mux stopped and stitches
+ * the new run into the playlist behind an EXT-X-DISCONTINUITY — the player just sees the
+ * playlist resume growing (no reload, usually no visible stall). Repeated failures without
+ * progress give up by writing ENDLIST, so playback ends cleanly at the muxed edge instead of
+ * buffering forever. ffmpeg always writes per-run raw playlists; a merger thread composes
+ * [playlistFile] from them (atomic tmp+rename).
  *
  * Create via [YtdlpKt.newLocalHlsBridge]. One session per playback; not reusable after [stop].
  */
@@ -33,21 +35,19 @@ class LocalHlsBridgeSession internal constructor(
 ) {
     val playlistFile: File = File(outputDir, "index.m3u8")
 
-    /** Media time where this session's real content begins (start of the gap prefix's end). */
+    /** Media time where this session's real (non-gap) content begins. */
     val startAtMs: Long get() = startAtSeconds * 1000L
 
-    /** ffmpeg's own output; == [playlistFile] when no gap prefix is needed. */
-    private val rawPlaylist: File =
-        if (startAtSeconds > 0) File(outputDir, "raw.m3u8") else playlistFile
-
-    @Volatile
+    private val lock = Object()
+    private val runPlaylists = ArrayList<File>() // raw ffmpeg playlist per run, in order
     private var process: Process? = null
-
-    @Volatile
     private var merger: Thread? = null
+    private var stopped = false
+    private var failedStreak = 0
+    private var segmentsAtLastStart = 0
 
     val isRunning: Boolean
-        get() = process?.let {
+        get() = synchronized(lock) { process }?.let {
             // Process.isAlive needs API 26; exitValue throws while still running.
             try {
                 it.exitValue()
@@ -62,62 +62,128 @@ class LocalHlsBridgeSession internal constructor(
      * player prepare against the (still-live) playlist before any download starts —
      * e.g. for preloaded queue items that may never be played.
      */
-    @Synchronized
     fun prepareOutput() {
-        outputDir.mkdirs()
-        if (!playlistFile.exists()) {
-            playlistFile.writeText(stubPlaylist(segmentSeconds, startAtSeconds))
+        synchronized(lock) {
+            outputDir.mkdirs()
+            if (!playlistFile.exists()) {
+                playlistFile.writeText(stubPlaylist(segmentSeconds, startAtSeconds))
+            }
         }
     }
 
     /** Write the stub playlist (if needed) and spawn ffmpeg. Idempotent while running. */
-    @Synchronized
     fun start() {
-        if (process != null) return
-        prepareOutput()
+        synchronized(lock) {
+            if (stopped || process != null) return
+            prepareOutput()
+            startRunLocked(startAtSeconds)
+            if (merger == null) {
+                merger = Thread({ mergeLoop() }, "ytdlp-bridge-merge").also { it.start() }
+            }
+        }
+    }
+
+    /** Spawn one ffmpeg run muxing from [fromSeconds]; caller must hold [lock]. */
+    private fun startRunLocked(fromSeconds: Int) {
+        val runIndex = runPlaylists.size
+        val raw = File(outputDir, "run$runIndex.m3u8")
+        runPlaylists.add(raw)
+        segmentsAtLastStart = segmentCount()
         val spec = YoutubeDL.getInstance().ffmpegExecSpec()
         val command = buildFfmpegArgs(
             spec.binary.absolutePath, videoUrl, audioUrl, segmentSeconds,
-            File(outputDir, "seg%05d.m4s").absolutePath, rawPlaylist.absolutePath,
-            startAtSeconds,
+            File(outputDir, "run${runIndex}_%05d.m4s").absolutePath, raw.absolutePath,
+            fromSeconds, "init$runIndex.mp4",
         )
         val pb = ProcessBuilder(command).redirectErrorStream(true)
         pb.environment().putAll(spec.environment)
         val p = pb.start()
         process = p
-        Thread({
-            try {
-                p.inputStream.bufferedReader().forEachLine { line ->
-                    // Old-linker "unused DT entry" warnings are benign noise; keep real output.
-                    if (!line.contains("unused DT entry")) Log.i(TAG, line)
-                }
-            } catch (ignored: Exception) {
-                // stream closes when the process is destroyed
+        Log.i(TAG, "run $runIndex started from ${fromSeconds}s")
+        Thread({ drainAndSupervise(p, raw) }, "ytdlp-bridge-run$runIndex").start()
+    }
+
+    /** Drain a run's output, then decide: finished / restart at the mux edge / give up. */
+    private fun drainAndSupervise(p: Process, raw: File) {
+        try {
+            p.inputStream.bufferedReader().forEachLine { line ->
+                // Old-linker "unused DT entry" warnings are benign noise; keep real output.
+                if (!line.contains("unused DT entry")) Log.i(TAG, line)
             }
-            Log.i(TAG, "ffmpeg exited, running=$isRunning dir=$outputDir")
-        }, "ytdlp-bridge-log").start()
-        if (startAtSeconds > 0) {
-            merger = Thread({ mergeLoop() }, "ytdlp-bridge-merge").also { it.start() }
+        } catch (ignored: Exception) {
+            // stream closes when the process is destroyed
+        }
+        val backoffMs: Long
+        synchronized(lock) {
+            if (stopped || process !== p) return
+            process = null
+            if (raw.exists() && raw.readText().contains("#EXT-X-ENDLIST")) {
+                Log.i(TAG, "run finished (ENDLIST); mux complete")
+                return
+            }
+            // Died without finishing. Progress since the last (re)start resets the streak, so
+            // an occasional network blip doesn't eat the retry budget of a long session.
+            failedStreak = if (segmentCount() > segmentsAtLastStart) 1 else failedStreak + 1
+            if (failedStreak > MAX_FAILED_STREAK) {
+                Log.e(TAG, "ffmpeg died $failedStreak times without progress; giving up — "
+                        + "finalizing playlist so playback ends at the muxed edge")
+                finalizeIndexLocked()
+                return
+            }
+            backoffMs = 1000L * (1 shl (failedStreak - 1)) // 1s, 2s, 4s
+            Log.w(TAG, "ffmpeg died unfinished (streak=$failedStreak); "
+                    + "restarting at mux edge in ${backoffMs}ms")
+        }
+        try {
+            Thread.sleep(backoffMs)
+        } catch (e: InterruptedException) {
+            return
+        }
+        synchronized(lock) {
+            if (stopped || process != null) return
+            startRunLocked(startAtSeconds + muxedSecondsLocked())
         }
     }
 
+    /** Whole seconds of media muxed so far across all runs; caller must hold [lock]. */
+    private fun muxedSecondsLocked(): Int =
+        runPlaylists.sumOf { if (it.exists()) sumExtinfSeconds(it.readText()) else 0.0 }.toInt()
+
+    private fun segmentCount(): Int =
+        outputDir.listFiles { _, name -> name.endsWith(".m4s") }?.size ?: 0
+
+    /** Compose the final playlist with ENDLIST so the player treats it as finished VOD. */
+    private fun finalizeIndexLocked() {
+        val rawTexts = runPlaylists.filter { it.exists() }.map { it.readText() }
+        val tmp = File(outputDir, "index.m3u8.tmp")
+        tmp.writeText(composeIndex(rawTexts, startAtSeconds, segmentSeconds, forceEnd = true))
+        tmp.renameTo(playlistFile)
+    }
+
     /**
-     * Rewrites ffmpeg's raw playlist into [playlistFile] with the gap prefix whenever it
-     * changes; atomic via temp file + rename so the player never reads a half-written playlist.
+     * Recomposes [playlistFile] from all runs' raw playlists whenever they change; atomic via
+     * temp file + rename so the player never reads a half-written playlist.
      */
     private fun mergeLoop() {
         var last = ""
         try {
             while (!Thread.interrupted()) {
-                if (rawPlaylist.exists()) {
-                    val raw = rawPlaylist.readText()
-                    if (raw != last && raw.contains("#EXTINF")) {
-                        last = raw
+                val rawTexts: List<String>
+                val stoppedNow: Boolean
+                synchronized(lock) {
+                    rawTexts = runPlaylists.filter { it.exists() }.map { it.readText() }
+                    stoppedNow = stopped
+                }
+                if (stoppedNow) return
+                if (rawTexts.any { it.contains("#EXTINF") }) {
+                    val composed = composeIndex(rawTexts, startAtSeconds, segmentSeconds)
+                    if (composed != last) {
+                        last = composed
                         val tmp = File(outputDir, "index.m3u8.tmp")
-                        tmp.writeText(gapMerge(raw, startAtSeconds, segmentSeconds))
+                        tmp.writeText(composed)
                         tmp.renameTo(playlistFile)
                     }
-                    if (raw.contains("#EXT-X-ENDLIST")) {
+                    if (composed.contains("#EXT-X-ENDLIST")) {
                         return
                     }
                 }
@@ -130,18 +196,34 @@ class LocalHlsBridgeSession internal constructor(
         }
     }
 
+    /**
+     * Test seam: kill the current ffmpeg as if it died externally, WITHOUT stopping the session,
+     * so the watchdog restart path runs. Returns false if no run is active. (Reproduces, in an
+     * automated test, the hand-verified "kill ffmpeg behind the app's back mid-play" scenario.)
+     */
+    fun simulateFfmpegDeathForTest(): Boolean = synchronized(lock) {
+        val p = process ?: return false
+        p.destroy()
+        true
+    }
+
     /** Kill ffmpeg and delete the output dir (deletion happens on a background thread). */
-    @Synchronized
     fun stop() {
-        process?.destroy()
-        process = null
-        merger?.interrupt()
-        merger = null
+        synchronized(lock) {
+            stopped = true
+            process?.destroy()
+            process = null
+            merger?.interrupt()
+            merger = null
+        }
         Thread({ outputDir.deleteRecursively() }, "ytdlp-bridge-clean").start()
     }
 
     private companion object {
         private const val TAG = "LocalHlsBridge"
+
+        /** Consecutive deaths with zero new segments before giving up (URL expired, offline). */
+        private const val MAX_FAILED_STREAK = 3
     }
 }
 
@@ -176,21 +258,68 @@ internal fun gapEntries(totalSeconds: Int, segmentSeconds: Int): String {
     return sb.toString()
 }
 
+/** Sum of #EXTINF durations in a playlist body (media seconds muxed by that run). */
+internal fun sumExtinfSeconds(playlistText: String): Double =
+    EXTINF_REGEX.findAll(playlistText).sumOf { it.groupValues[1].toDouble() }
+
+private val EXTINF_REGEX = Regex("#EXTINF:([0-9.]+)")
+
 /**
- * index.m3u8 = raw playlist's header + gap prefix + raw's segment body (EXT-X-MAP onward).
- * Pure (unit-tested).
+ * Compose index.m3u8 from the runs' raw ffmpeg playlists: shared header, EXT-X-GAP head for a
+ * seek-jump start, then each run's body (its EXT-X-MAP + segments) with EXT-X-DISCONTINUITY
+ * between runs (timestamps restart per run). ENDLIST is kept only from the LAST run — earlier
+ * runs never finished (that's why there are later ones) — or forced when giving up. Pure
+ * (unit-tested).
  */
-internal fun gapMerge(rawText: String, startAtSeconds: Int, segmentSeconds: Int): String {
-    val header = StringBuilder()
-    val body = StringBuilder()
+internal fun composeIndex(
+    rawTexts: List<String>,
+    startAtSeconds: Int,
+    segmentSeconds: Int,
+    forceEnd: Boolean = false,
+): String {
+    val sb = StringBuilder()
+    sb.append("#EXTM3U\n#EXT-X-VERSION:7\n")
+    val targetDuration = rawTexts.mapNotNull {
+        TARGET_DURATION_REGEX.find(it)?.groupValues?.get(1)?.toIntOrNull()
+    }.maxOrNull() ?: segmentSeconds
+    sb.append("#EXT-X-TARGETDURATION:").append(targetDuration).append('\n')
+    sb.append("#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:EVENT\n")
+    sb.append(gapEntries(startAtSeconds, segmentSeconds))
+    var wroteRun = false
+    var lastHadEnd = false
+    for (raw in rawTexts) {
+        val body = playlistBody(raw)
+        if (body.isEmpty()) {
+            continue
+        }
+        if (wroteRun) {
+            sb.append("#EXT-X-DISCONTINUITY\n")
+        }
+        lastHadEnd = raw.contains("#EXT-X-ENDLIST")
+        sb.append(body.trimEnd('\n')).append('\n')
+        wroteRun = true
+    }
+    if (lastHadEnd || forceEnd) {
+        sb.append("#EXT-X-ENDLIST\n")
+    }
+    return sb.toString()
+}
+
+private val TARGET_DURATION_REGEX = Regex("#EXT-X-TARGETDURATION:(\\d+)")
+
+/** A raw playlist's segment body: from the first EXT-X-MAP/EXTINF line, minus ENDLIST. */
+internal fun playlistBody(rawText: String): String {
+    val sb = StringBuilder()
     var inBody = false
     for (line in rawText.split("\n")) {
-        if (line.startsWith("#EXT-X-MAP") || line.startsWith("#EXTINF")) {
+        if (!inBody && (line.startsWith("#EXT-X-MAP") || line.startsWith("#EXTINF"))) {
             inBody = true
         }
-        (if (inBody) body else header).append(line).append('\n')
+        if (inBody && line.isNotEmpty() && line != "#EXT-X-ENDLIST") {
+            sb.append(line).append('\n')
+        }
     }
-    return header.toString() + gapEntries(startAtSeconds, segmentSeconds) + body.toString().trimEnd('\n') + "\n"
+    return sb.toString()
 }
 
 /** Pure arg-builder (unit-tested): googlevideo -> local HLS, stream copy. */
@@ -202,6 +331,7 @@ internal fun buildFfmpegArgs(
     segmentPattern: String,
     playlistPath: String,
     startAtSeconds: Int = 0,
+    initFileName: String = "init.mp4",
 ): List<String> {
     val args = mutableListOf(ffmpegPath, "-nostdin", "-loglevel", "warning", "-y")
     // Input-level -ss: ffmpeg range-seeks into the remote mp4/webm (seconds, not a re-download).
@@ -226,7 +356,7 @@ internal fun buildFfmpegArgs(
         // Write segments/playlist to a temp file and rename on completion, so a concurrent
         // reader never sees a half-written file.
         "-hls_flags", "temp_file",
-        "-hls_fmp4_init_filename", "init.mp4",
+        "-hls_fmp4_init_filename", initFileName,
         "-hls_segment_filename", segmentPattern,
         playlistPath,
     )

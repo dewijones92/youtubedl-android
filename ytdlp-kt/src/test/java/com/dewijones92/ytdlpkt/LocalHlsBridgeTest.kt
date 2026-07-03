@@ -75,18 +75,57 @@ class LocalHlsBridgeTest {
         }
     }
 
+    private val run0 = "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:6\n" +
+        "#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:EVENT\n" +
+        "#EXT-X-MAP:URI=\"init0.mp4\"\n#EXTINF:6.0,\nrun0_00000.m4s\n#EXTINF:4.0,\nrun0_00001.m4s\n"
+    private val run1Finished = "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:8\n" +
+        "#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:EVENT\n" +
+        "#EXT-X-MAP:URI=\"init1.mp4\"\n#EXTINF:8.0,\nrun1_00000.m4s\n#EXT-X-ENDLIST\n"
+
     @Test
-    fun gapMergePutsGapsBetweenHeaderAndSegments() {
-        val raw = "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:6\n" +
-            "#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:EVENT\n" +
-            "#EXT-X-MAP:URI=\"init.mp4\"\n#EXTINF:6.0,\nseg00000.m4s\n"
-        val merged = gapMerge(raw, 8, 4)
+    fun composeSingleRunPutsGapsBetweenHeaderAndSegments() {
+        val merged = composeIndex(listOf(run0), 8, 4)
         val gapIdx = merged.indexOf("#EXT-X-GAP")
         assertTrue(gapIdx > 0)
         // gaps sit after the header but before the MAP + real segments
         assertTrue(gapIdx < merged.indexOf("#EXT-X-MAP"))
         assertTrue(merged.indexOf("#EXT-X-PLAYLIST-TYPE") < gapIdx)
-        assertTrue(merged.endsWith("seg00000.m4s\n"))
+        assertTrue(merged.endsWith("run0_00001.m4s\n"))
+        assertFalse(merged.contains("#EXT-X-ENDLIST")) // run not finished -> playlist stays live
+        assertFalse(merged.contains("#EXT-X-DISCONTINUITY"))
+    }
+
+    @Test
+    fun composeStitchesRestartRunsWithDiscontinuity() {
+        val merged = composeIndex(listOf(run0, run1Finished), 0, 4)
+        // second run starts behind a discontinuity (its timestamps restart)
+        val disc = merged.indexOf("#EXT-X-DISCONTINUITY")
+        assertTrue(disc > merged.indexOf("run0_00001.m4s"))
+        assertTrue(disc < merged.indexOf("init1.mp4"))
+        // ENDLIST comes from the last run finishing
+        assertTrue(merged.trim().endsWith("#EXT-X-ENDLIST"))
+        // target duration = max across runs
+        assertTrue(merged.contains("#EXT-X-TARGETDURATION:8\n"))
+    }
+
+    @Test
+    fun composeForceEndFinalizesAnUnfinishedPlaylist() {
+        val merged = composeIndex(listOf(run0), 0, 4, forceEnd = true)
+        assertTrue(merged.trim().endsWith("#EXT-X-ENDLIST"))
+    }
+
+    @Test
+    fun sumExtinfCountsMuxedMedia() {
+        assertEquals(10.0, sumExtinfSeconds(run0), 0.001)
+        assertEquals(8.0, sumExtinfSeconds(run1Finished), 0.001)
+    }
+
+    @Test
+    fun playlistBodyStartsAtMapAndDropsEndlist() {
+        val body = playlistBody(run1Finished)
+        assertTrue(body.startsWith("#EXT-X-MAP"))
+        assertFalse(body.contains("#EXT-X-ENDLIST"))
+        assertFalse(body.contains("#EXT-X-TARGETDURATION"))
     }
 
     @Test
