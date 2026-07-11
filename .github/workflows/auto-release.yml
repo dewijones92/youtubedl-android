@@ -99,11 +99,13 @@ jobs:
           set -uo pipefail
           # The first request for a coordinate triggers JitPack's build; poll until the .pom is 200.
           base="https://jitpack.io/com/github/dewijones92/youtubedl-android/ytdlp-kt/${KT_TAG}"
-          for i in $(seq 1 40); do
+          # Generous budget (~45 min): JitPack must first notice the fresh tag (ref-cache lag,
+          # observed ~20 min alone) and then cold-build the multi-module project.
+          for i in $(seq 1 60); do
             code="$(curl -s -o /dev/null -w '%{http_code}' "${base}/ytdlp-kt-${KT_TAG}.pom" || true)"
             echo "attempt ${i}: pom http ${code}"
             [ "$code" = "200" ] && { echo "JitPack built ${KT_TAG}"; exit 0; }
-            sleep 30
+            sleep 45
           done
           echo "::warning::JitPack did not confirm ${KT_TAG} in time; the client build will cold-fetch it"
 
