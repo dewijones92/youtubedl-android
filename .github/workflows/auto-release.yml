@@ -1,7 +1,12 @@
 # L2 -> L5 fully-hands-off release pipeline. On a new yt-dlp NIGHTLY, propagate the bump all the
 # way to a published DewiPipe release with no human in the loop:
-#   1. swap the bundled yt-dlp zipapp (library/src/main/res/raw/ytdlp) + commit to master
-#   2. tag a new ytdlp-kt version so JitPack rebuilds the SDK carrying the new binary
+#   1. swap the bundled yt-dlp zipapp (library/src/main/res/raw/ytdlp) + commit to
+#      api23-all-natives -- the SDK line the client consumes. NOT master: master lags this branch
+#      (it lacks the local-HLS bridge + enriched MediaInfo), and an SDK tagged from master once
+#      broke the client build with 26 missing-symbol errors.
+#   2. tag a new ytdlp-kt version so JitPack rebuilds the SDK carrying the new binary; if JitPack
+#      has ever built that tag name before, suffix .1/.2/... (JitPack caches per version string,
+#      so re-using a name can serve a stale artifact)
 #   3. warm JitPack for that tag (the first fetch cold-builds; else the client build would time out)
 #   4. bump PipePipeClient's ytdlp-kt dependency + push to dev (client Build uploads the rolling APKs)
 #   5. cut the next ytdlp-poc-v* milestone tag on that commit (client Build publishes the release)
@@ -31,10 +36,10 @@ jobs:
   release:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout youtubedl-android (master)
+      - name: Checkout youtubedl-android (api23-all-natives — the SDK line the client uses)
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: master
+          ref: api23-all-natives
           # PAT (not GITHUB_TOKEN) so the ytdlp-kt tag we push can trigger downstream builds.
           token: ${{ secrets.RELEASE_PAT }}
 
@@ -53,7 +58,7 @@ jobs:
           fi
           { echo "changed=true"; echo "new=$latest"; } >> "$GITHUB_OUTPUT"
 
-      - name: Swap zipapp, commit master, tag ytdlp-kt
+      - name: Swap zipapp, commit api23-all-natives, tag ytdlp-kt
         if: steps.check.outputs.changed == 'true'
         id: bump
         env:
@@ -71,8 +76,17 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "$BUNDLED"
           git commit -m "L2: bump bundled yt-dlp -> ${NEW} (nightly, auto-release)"
-          git push origin master
-          KT_TAG="v${NEW}-api23"
+          git push origin api23-all-natives
+          # Pick a tag name JitPack has never built: it caches per version string, so a re-used
+          # name (e.g. after a deleted/re-cut tag) would serve the stale cached artifact.
+          base_tag="v${NEW}-api23"
+          KT_TAG="$base_tag"
+          n=0
+          while curl -sf -o /dev/null \
+              "https://jitpack.io/com/github/dewijones92/youtubedl-android/ytdlp-kt/${KT_TAG}/ytdlp-kt-${KT_TAG}.pom"; do
+            n=$(( n + 1 )); KT_TAG="${base_tag}.${n}"
+            [ "$n" -le 9 ] || { echo "could not find an unused tag suffix"; exit 1; }
+          done
           git tag -a "$KT_TAG" -m "ytdlp-kt carrying yt-dlp ${NEW}"
           git push origin "$KT_TAG"
           echo "kt_tag=$KT_TAG" >> "$GITHUB_OUTPUT"
