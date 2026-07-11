@@ -27,12 +27,15 @@ object YoutubeDL {
     private var TMPDIR: String = ""
     private val idProcessMap = Collections.synchronizedMap(HashMap<String, Process>())
 
+    private var baseDirPath: File? = null
+
     @Synchronized
     @Throws(YoutubeDLException::class)
     fun init(appContext: Context) {
         if (initialized) return
         val baseDir = File(appContext.noBackupFilesDir, baseName)
         if (!baseDir.exists()) baseDir.mkdir()
+        baseDirPath = baseDir
         val packagesDir = File(baseDir, packagesRoot)
         binDir = File(appContext.applicationInfo.nativeLibraryDir)
         pythonPath = File(binDir, pythonBinName)
@@ -165,9 +168,187 @@ object YoutubeDL {
         return videoInfo
     }
 
+    /** The python process environment every bundled-runtime invocation needs. */
+    private fun applyEnvironment(processBuilder: ProcessBuilder) {
+        processBuilder.environment().apply {
+            this["LD_LIBRARY_PATH"] = ENV_LD_LIBRARY_PATH
+            // yt-dlp's Popen strips LD_LIBRARY_PATH from spawned subprocesses (PyInstaller workaround,
+            // yt_dlp/utils/_utils.py) and only restores it from LD_LIBRARY_PATH_ORIG. Without this,
+            // directly-invoked ffmpeg/ffprobe/quickjs can't resolve libav*/libc++_shared.so in the
+            // unzipped usr/lib and appear as "exe versions: none" / "ffprobe not found" on API 23.
+            this["LD_LIBRARY_PATH_ORIG"] = ENV_LD_LIBRARY_PATH
+            this["SSL_CERT_FILE"] = ENV_SSL_CERT_FILE
+            this["PATH"] = System.getenv("PATH") + ":" + binDir!!.absolutePath
+            this["PYTHONHOME"] = ENV_PYTHONHOME
+            this["HOME"] = ENV_PYTHONHOME
+            this["TMPDIR"] = TMPDIR
+        }
+    }
+
     private fun ignoreErrors(request: YoutubeDLRequest, out: String): Boolean {
         return request.hasOption("--dump-json") && !out.isEmpty() && request.hasOption("--ignore-errors")
     }
+
+    // ---- persistent resolve daemon ----
+    // getInfo spawns a fresh python per call, paying interpreter + zipapp import (~1.5s measured
+    // on-device) every time. The daemon keeps ONE python alive running [DAEMON_SCRIPT]'s
+    // line-per-request loop, so a resolve costs only the network extraction. Scope: metadata
+    // resolution only — downloads keep the process-per-call path. The script builds its
+    // YoutubeDL params through yt-dlp's own CLI parser from the same flags [executeImpl] passes,
+    // so daemon extraction matches the CLI path.
+
+    private val daemonLock = Object()
+    private var daemonProcess: Process? = null
+    private var daemonIn: java.io.BufferedWriter? = null
+    private var daemonOut: java.io.BufferedReader? = null
+
+    /**
+     * Resolve [url] to a [VideoInfo] via the persistent daemon (started on first use, restarted
+     * transparently if it died). Throws [YoutubeDLException] for a real extraction failure (same
+     * messages as the CLI path, so error mapping downstream keeps working) and
+     * [YoutubeDLDaemonException] for daemon transport failures — fall back to [getInfo] on the
+     * latter only.
+     */
+    @JvmOverloads
+    @Throws(YoutubeDLException::class, YoutubeDLDaemonException::class)
+    fun getInfoViaDaemon(url: String, timeoutMs: Long = DAEMON_REQUEST_TIMEOUT_MS): VideoInfo {
+        require(url.isNotBlank() && !url.contains('\n')) { "invalid url" }
+        synchronized(daemonLock) {
+            try {
+                ensureDaemonLocked()
+                daemonIn!!.write(url)
+                daemonIn!!.newLine()
+                daemonIn!!.flush()
+                val line = readDaemonLineLocked(timeoutMs)
+                return when {
+                    line.startsWith("OK ") -> objectMapper.readValue(
+                        line.substring(3), VideoInfo::class.java
+                    ) ?: throw YoutubeDLDaemonException("daemon returned unparseable info")
+                    line.startsWith("ERR ") -> throw YoutubeDLException(
+                        objectMapper.readValue(line.substring(4), String::class.java)
+                    )
+                    else -> throw IOException("daemon protocol error: $line")
+                }
+            } catch (e: IOException) {
+                stopDaemonLocked()
+                throw YoutubeDLDaemonException("resolve daemon failed", e)
+            }
+        }
+    }
+
+    /** Kill the daemon (it restarts on the next [getInfoViaDaemon]). */
+    fun shutdownDaemon() {
+        synchronized(daemonLock) { stopDaemonLocked() }
+    }
+
+    private fun daemonAlive(): Boolean = daemonProcess?.let {
+        try {
+            it.exitValue() // throws while running (Process.isAlive needs API 26)
+            false
+        } catch (e: IllegalThreadStateException) {
+            true
+        }
+    } ?: false
+
+    @Throws(IOException::class)
+    private fun ensureDaemonLocked() {
+        assertInit()
+        if (daemonAlive()) return
+        stopDaemonLocked()
+        val script = File(baseDirPath!!, daemonScriptName)
+        script.writeText(DAEMON_SCRIPT)
+        val processBuilder = ProcessBuilder(
+            pythonPath!!.absolutePath, script.absolutePath, ytdlpPath!!.absolutePath,
+            "--dump-json", "--no-cache-dir",
+            "--js-runtimes", "quickjs:${quickJsArg ?: quickJsPath!!.absolutePath}",
+            "--ffmpeg-location", ffmpegPath!!.absolutePath,
+        )
+        applyEnvironment(processBuilder)
+        val process = processBuilder.start()
+        // Drain stderr forever so a chatty extractor can't fill the pipe and wedge python.
+        Thread({
+            try {
+                process.errorStream.bufferedReader().forEachLine { }
+            } catch (ignored: IOException) {
+            }
+        }, "ytdlp-daemon-err").apply { isDaemon = true }.start()
+        daemonProcess = process
+        daemonIn = process.outputStream.bufferedWriter()
+        daemonOut = process.inputStream.bufferedReader()
+        val hello = readDaemonLineLocked(DAEMON_START_TIMEOUT_MS)
+        if (hello != "READY") {
+            stopDaemonLocked()
+            throw IOException("daemon failed to start: $hello")
+        }
+    }
+
+    /** Bounded read: a wedged (alive but silent) daemon must not hang the caller forever. */
+    @Throws(IOException::class)
+    private fun readDaemonLineLocked(timeoutMs: Long): String {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (!daemonOut!!.ready()) {
+            if (!daemonAlive()) throw IOException("resolve daemon died")
+            if (System.currentTimeMillis() > deadline) throw IOException("resolve daemon timed out")
+            try {
+                Thread.sleep(50)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw IOException("interrupted waiting for daemon")
+            }
+        }
+        return daemonOut!!.readLine() ?: throw IOException("resolve daemon closed its output")
+    }
+
+    private fun stopDaemonLocked() {
+        daemonProcess?.destroy()
+        daemonProcess = null
+        daemonIn = null
+        daemonOut = null
+    }
+
+    private const val daemonScriptName = "resolve_daemon.py"
+    private const val DAEMON_START_TIMEOUT_MS = 30_000L
+    private const val DAEMON_REQUEST_TIMEOUT_MS = 90_000L
+
+    /**
+     * stdin: one URL per line. stdout: "READY" once, then per request exactly one line —
+     * "OK <sanitized info json>" or "ERR <json-encoded message>". yt-dlp's own output is routed
+     * to stderr so stdout carries only the protocol.
+     */
+    private val DAEMON_SCRIPT = """
+        import sys, json
+
+        sys.path.insert(0, sys.argv[1])
+        import yt_dlp
+
+        try:
+            parsed = yt_dlp.parse_options(sys.argv[2:])
+            ydl_opts = dict(parsed.ydl_opts)
+        except Exception:
+            ydl_opts = {}
+        ydl_opts.update({
+            "quiet": True,
+            "skip_download": True,
+            "noprogress": True,
+            "logtostderr": True,
+        })
+        ydl_opts.pop("forcejson", None)
+        ydl_opts.pop("forceprint", None)
+
+        ydl = yt_dlp.YoutubeDL(ydl_opts)
+        sys.stdout.write("READY\n")
+        sys.stdout.flush()
+        for line in sys.stdin:
+            url = line.strip()
+            if not url:
+                continue
+            try:
+                info = ydl.extract_info(url, download=False)
+                sys.stdout.write("OK " + json.dumps(ydl.sanitize_info(info)) + "\n")
+            except Exception as e:
+                sys.stdout.write("ERR " + json.dumps(str(e)) + "\n")
+            sys.stdout.flush()
+    """.trimIndent()
 
     fun destroyProcessById(id: String): Boolean {
         if (idProcessMap.containsKey(id)) {
@@ -260,20 +441,7 @@ object YoutubeDL {
         command.addAll(args)
         val processBuilder = ProcessBuilder(command)
             .redirectErrorStream(redirectErrorStream)
-
-        processBuilder.environment().apply {
-            this["LD_LIBRARY_PATH"] = ENV_LD_LIBRARY_PATH
-            // yt-dlp's Popen strips LD_LIBRARY_PATH from spawned subprocesses (PyInstaller workaround,
-            // yt_dlp/utils/_utils.py) and only restores it from LD_LIBRARY_PATH_ORIG. Without this,
-            // directly-invoked ffmpeg/ffprobe/quickjs can't resolve libav*/libc++_shared.so in the
-            // unzipped usr/lib and appear as "exe versions: none" / "ffprobe not found" on API 23.
-            this["LD_LIBRARY_PATH_ORIG"] = ENV_LD_LIBRARY_PATH
-            this["SSL_CERT_FILE"] = ENV_SSL_CERT_FILE
-            this["PATH"] = System.getenv("PATH") + ":" + binDir!!.absolutePath
-            this["PYTHONHOME"] = ENV_PYTHONHOME
-            this["HOME"] = ENV_PYTHONHOME
-            this["TMPDIR"] = TMPDIR
-        }
+        applyEnvironment(processBuilder)
 
         process = try {
             processBuilder.start()

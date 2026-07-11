@@ -39,10 +39,23 @@ object YtdlpKt {
         initialized = true
     }
 
-    /** Resolve a single URL to typed metadata (formats, thumbnail, etc.). */
+    /**
+     * Resolve a single URL to typed metadata (formats, thumbnail, etc.).
+     * Prefers the persistent resolve daemon (saves the ~1.5s python boot every process-per-call
+     * resolve pays); any daemon transport failure falls back to the plain CLI path so a broken
+     * daemon can never make resolution worse than before.
+     */
     suspend fun resolve(url: String): MediaInfo = withContext(Dispatchers.IO) {
         ensureInit()
-        YoutubeDL.getInstance().getInfo(url).toMediaInfo()
+        val info = try {
+            YoutubeDL.getInstance().getInfoViaDaemon(url)
+        } catch (e: com.yausername.youtubedl_android.YoutubeDLDaemonException) {
+            // Transport failure only — real extraction errors propagate with their original
+            // message so downstream error mapping (anti-bot, geo, private) keeps working.
+            android.util.Log.w("YtdlpKt", "daemon resolve failed; using process-per-call", e)
+            YoutubeDL.getInstance().getInfo(url)
+        }
+        info.toMediaInfo()
     }
 
     /**
