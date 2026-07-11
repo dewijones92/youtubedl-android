@@ -1,0 +1,119 @@
+# L2 -> L5 fully-hands-off release pipeline. On a new yt-dlp NIGHTLY, propagate the bump all the
+# way to a published DewiPipe release with no human in the loop:
+#   1. swap the bundled yt-dlp zipapp (library/src/main/res/raw/ytdlp) + commit to master
+#   2. tag a new ytdlp-kt version so JitPack rebuilds the SDK carrying the new binary
+#   3. warm JitPack for that tag (the first fetch cold-builds; else the client build would time out)
+#   4. bump PipePipeClient's ytdlp-kt dependency + push to dev (client Build uploads the rolling APKs)
+#   5. cut the next ytdlp-poc-v* milestone tag on that commit (client Build publishes the release)
+#
+# ACCEPTED TRADEOFF: CI cannot test real YouTube extraction (datacenter IP is bot-blocked), and a
+# yt-dlp zipapp bump changes no compiled code, so NO automated gate can catch a bad nightly here --
+# only real playback can. This pipeline ships anyway and relies on DAILY self-heal: the day yt-dlp
+# fixes a break, the next run ships the fix automatically. Chosen deliberately for a personal app.
+#
+# Cross-repo writes need a fine-grained PAT in secret RELEASE_PAT (Contents: read+write on BOTH
+# dewijones92/youtubedl-android and dewijones92/PipePipeClient) -- the built-in GITHUB_TOKEN is
+# scoped to one repo and cannot reach or trigger the other.
+#
+# ROLLOUT: workflow_dispatch-only until proven once end-to-end; then the nightly `schedule:` below
+# is uncommented.
+name: Auto-release (yt-dlp nightly -> app)
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "0 6 * * *"  # daily 06:00 UTC -- enabled after the first proven manual run
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout youtubedl-android (master)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: master
+          # PAT (not GITHUB_TOKEN) so the ytdlp-kt tag we push can trigger downstream builds.
+          token: ${{ secrets.RELEASE_PAT }}
+
+      - name: Check for a newer yt-dlp nightly
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          BUNDLED=library/src/main/res/raw/ytdlp
+          current="$(python3 "$BUNDLED" --version 2>/dev/null | head -1 | tr -d '[:space:]')"
+          latest="$(gh api repos/yt-dlp/yt-dlp-nightly-builds/releases/latest --jq .tag_name)"
+          echo "current=$current latest=$latest"
+          if [ "$current" = "$latest" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"; echo "Already up to date ($current)"; exit 0
+          fi
+          { echo "changed=true"; echo "new=$latest"; } >> "$GITHUB_OUTPUT"
+
+      - name: Swap zipapp, commit master, tag ytdlp-kt
+        if: steps.check.outputs.changed == 'true'
+        id: bump
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEW: ${{ steps.check.outputs.new }}
+        run: |
+          set -euo pipefail
+          BUNDLED=library/src/main/res/raw/ytdlp
+          url="$(gh api repos/yt-dlp/yt-dlp-nightly-builds/releases/latest --jq '.assets[]|select(.name=="yt-dlp")|.browser_download_url')"
+          [ -n "$url" ] || { echo "no yt-dlp asset in nightly release"; exit 1; }
+          curl -fsSL -o "$BUNDLED" "$url"
+          got="$(python3 "$BUNDLED" --version 2>/dev/null | head -1 | tr -d '[:space:]')"
+          [ "$got" = "$NEW" ] || { echo "downloaded version $got != $NEW"; exit 1; }
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$BUNDLED"
+          git commit -m "L2: bump bundled yt-dlp -> ${NEW} (nightly, auto-release)"
+          git push origin master
+          KT_TAG="v${NEW}-api23"
+          git tag -a "$KT_TAG" -m "ytdlp-kt carrying yt-dlp ${NEW}"
+          git push origin "$KT_TAG"
+          echo "kt_tag=$KT_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Warm JitPack for the new ytdlp-kt tag
+        if: steps.check.outputs.changed == 'true'
+        env:
+          KT_TAG: ${{ steps.bump.outputs.kt_tag }}
+        run: |
+          set -uo pipefail
+          # The first request for a coordinate triggers JitPack's build; poll until the .pom is 200.
+          base="https://jitpack.io/com/github/dewijones92/youtubedl-android/ytdlp-kt/${KT_TAG}"
+          for i in $(seq 1 40); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' "${base}/ytdlp-kt-${KT_TAG}.pom" || true)"
+            echo "attempt ${i}: pom http ${code}"
+            [ "$code" = "200" ] && { echo "JitPack built ${KT_TAG}"; exit 0; }
+            sleep 30
+          done
+          echo "::warning::JitPack did not confirm ${KT_TAG} in time; the client build will cold-fetch it"
+
+      - name: Bump client dependency, push dev, cut milestone tag
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          KT_TAG: ${{ steps.bump.outputs.kt_tag }}
+        run: |
+          set -euo pipefail
+          git clone --branch dev \
+            "https://x-access-token:${GH_TOKEN}@github.com/dewijones92/PipePipeClient.git" client
+          cd client
+          sed -i -E "s#(youtubedl-android:ytdlp-kt:)v[^']*#\1${KT_TAG}#" app/build.gradle
+          grep -q "ytdlp-kt:${KT_TAG}" app/build.gradle || { echo "client dep bump did not apply"; exit 1; }
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "L4->L5: bump ytdlp-kt -> ${KT_TAG} (auto-release)"
+          git push origin dev
+          # Next milestone number = max existing ytdlp-poc-vN + 1. The tag points at the dep-bump
+          # commit; the client's Build workflow publishes the release APKs off this tag.
+          n="$(gh release list --repo dewijones92/PipePipeClient --limit 100 --json tagName \
+                --jq '[.[].tagName|select(startswith("ytdlp-poc-v"))|ltrimstr("ytdlp-poc-v")|select(test("^[0-9]+$"))|tonumber]|max // 0')"
+          tag="ytdlp-poc-v$(( n + 1 ))"
+          git tag -a "$tag" -m "auto-release: yt-dlp ${KT_TAG}"
+          git push origin "$tag"
+          echo "cut milestone $tag (client Build will publish the APKs)"
