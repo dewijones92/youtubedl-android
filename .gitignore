@@ -13,4 +13,4 @@
 /captures
 .externalNativeBuild
 target
-/buildSrc/build
+/buildSrc/build.quality-tools/
