@@ -4,11 +4,16 @@
 # swaps the zipapp, and opens a PR. The PR's deterministic gates (build + API-23 symbol gate +
 # RuntimeSmokeTest) run automatically; real-network extraction must be validated off-CI (CI's
 # datacenter IP is YouTube-bot-blocked) before merging.
+#
+# Source = yt-dlp's NIGHTLY channel (yt-dlp/yt-dlp-nightly-builds), not stable: when YouTube
+# breaks extraction the fix lands in nightly first, often days ahead of the stable release. The
+# job runs DAILY so a fresh nightly is picked up quickly. It only opens a PR (never auto-merges),
+# so a human still verifies real extraction before shipping — bounding the risk of a bad nightly.
 name: Update bundled yt-dlp
 
 on:
   schedule:
-    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+    - cron: "0 6 * * *" # daily 06:00 UTC
   workflow_dispatch:
 
 permissions: {}
@@ -33,12 +38,12 @@ jobs:
           # The zipapp has a shebang prefix (unzip warns + exits non-zero under pipefail), so read
           # the version by running it instead.
           current="$(python3 "$BUNDLED" --version 2>/dev/null | head -1 | tr -d '[:space:]')"
-          latest="$(gh api repos/yt-dlp/yt-dlp/releases/latest --jq .tag_name)"
+          latest="$(gh api repos/yt-dlp/yt-dlp-nightly-builds/releases/latest --jq .tag_name)"
           echo "current=$current latest=$latest"
           if [ "$current" = "$latest" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"; echo "Already up to date ($current)"; exit 0
           fi
-          url="$(gh api repos/yt-dlp/yt-dlp/releases/latest --jq '.assets[]|select(.name=="yt-dlp")|.browser_download_url')"
+          url="$(gh api repos/yt-dlp/yt-dlp-nightly-builds/releases/latest --jq '.assets[]|select(.name=="yt-dlp")|.browser_download_url')"
           [ -n "$url" ] || { echo "no 'yt-dlp' zipapp asset in $latest"; exit 1; }
           curl -fsSL -o "$BUNDLED" "$url"
           got="$(python3 "$BUNDLED" --version 2>/dev/null | head -1 | tr -d '[:space:]')"
@@ -62,8 +67,8 @@ jobs:
           git push -f origin "$branch"
           gh pr list --head "$branch" --json number --jq '.[0].number' | grep -q . && { echo "PR already open"; exit 0; }
           gh pr create --head "$branch" --base master \
-            --title "L2: bump bundled yt-dlp ${CUR} -> ${NEW}" \
-            --body "Automated bump of the bundled yt-dlp zipapp (\`library/src/main/res/raw/ytdlp\`) from **${CUR}** to **${NEW}**.
+            --title "L2: bump bundled yt-dlp ${CUR} -> ${NEW} (nightly)" \
+            --body "Automated bump of the bundled yt-dlp zipapp (\`library/src/main/res/raw/ytdlp\`) from **${CUR}** to **${NEW}**, from yt-dlp's **nightly** channel (fixes land here first).
 
           Deterministic gates (build + API-23 symbol gate + on-device RuntimeSmokeTest) run on this PR. **Real YouTube extraction must be verified off-CI** before merge — CI runs on a datacenter IP that YouTube bot-blocks (see ci.yml / NetworkExtractionTest). Quick local check:
           \`\`\`
