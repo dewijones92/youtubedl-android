@@ -20,14 +20,14 @@
 # dewijones92/youtubedl-android and dewijones92/PipePipeClient) -- the built-in GITHUB_TOKEN is
 # scoped to one repo and cannot reach or trigger the other.
 #
-# ROLLOUT: workflow_dispatch-only until proven once end-to-end; then the nightly `schedule:` below
-# is uncommented.
+# Proven end-to-end 2026-07-11 (nightly 2026.07.09.234832 -> ytdlp-kt v...-api23.1 -> DewiPipe
+# ytdlp-poc-v7); the daily schedule below is live.
 name: Auto-release (yt-dlp nightly -> app)
 
 on:
   workflow_dispatch:
-  # schedule:
-  #   - cron: "0 6 * * *"  # daily 06:00 UTC -- enabled after the first proven manual run
+  schedule:
+    - cron: "0 6 * * *" # daily 06:00 UTC
 
 permissions:
   contents: write
