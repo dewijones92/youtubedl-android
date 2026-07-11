@@ -12,8 +12,8 @@
 name: Update bundled yt-dlp
 
 on:
-  schedule:
-    - cron: "0 6 * * *" # daily 06:00 UTC
+  # Manual "just open a PR to bump" fallback. The scheduled, fully-hands-off path is
+  # auto-release.yml; this stays dispatch-only so the two don't both bump nightly.
   workflow_dispatch:
 
 permissions: {}
